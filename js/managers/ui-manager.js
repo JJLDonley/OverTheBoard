@@ -56,6 +56,8 @@ export class UIManager {
             "ObsVdoUrl",
             "ChatUrl",
             "NetworkRoom",
+            "AiOverlay",
+            "AiOverlayHeader",
         ].forEach((id) => {
             const el = document.getElementById(id);
             if (!el) return;
@@ -99,6 +101,10 @@ export class UIManager {
                     const roomName = el.value.trim();
                     if (roomName && window.networkManager) {
                         window.networkManager.updateConnection(roomName);
+                    }
+                } else if (id === "AiOverlay") {
+                    if (window.setupAiWidget) {
+                        window.setupAiWidget(el.value.trim());
                     }
                 }
             });

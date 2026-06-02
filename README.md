@@ -85,6 +85,31 @@ A modern, web-based board review and broadcast overlay tool with integrated vide
 - `Network`: VDO Ninja room name
 - `stone`: Stone size value
 - `role`: `CO` (commentator) or `VW` (viewer)
+- `ai`: AI overlay context as `type/id`, e.g. `game/87480675`
+- `db`: Use local AI host (`http://localhost:8080`) instead of `https://stream-ai.baduk.club`
+
+### AI Overlay
+Commentators can enter an AI context in setup, or pass it in the URL:
+
+```txt
+?ai=game/87480675
+?ai=review/123456
+?ai=game/87480675&db
+```
+
+Overlaytool embeds the full AI page from:
+
+```txt
+https://stream-ai.baduk.club/type/id?width=420
+```
+
+With `?db`, it embeds the local AI page instead:
+
+```txt
+http://localhost:8080/type/id?width=420
+```
+
+Commentators see it as a draggable, collapsible iframe scaled to a small readable window. Use `−` to collapse it and `□` to expand it.
 
 ### OBS Remote Control (via VDO Ninja)
 - **How it works**: The OBS control panel is an embedded VDO Ninja iframe that relays OBS WebSocket controls through VDO Ninja. No direct browser-to-OBS WebSocket connection is required.

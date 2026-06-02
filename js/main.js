@@ -13,6 +13,11 @@ let isEventSet = false;
 let overlay = null;
 let drawingLayer = null;
 
+const AI_PROD_ORIGIN = "https://stream-ai.baduk.club";
+const AI_LOCAL_ORIGIN = "http://localhost:8080";
+const AI_FRAME_BASE_WIDTH = 420;
+const AI_FRAME_BASE_HEIGHT = 512;
+
 function getAppModeFromUrl() {
     const params = new URLSearchParams(window.location.search);
     const role = params.get("role");
@@ -26,7 +31,7 @@ function getAppModeFromUrl() {
     }
 
     const hasConfig = params.has("Network") || params.has("OTB") ||
-        params.has("obs") || params.has("Chat");
+        params.has("obs") || params.has("Chat") || params.has("ai") || params.has("db");
     if (hasConfig) {
         return "commentator";
     }
@@ -53,11 +58,28 @@ function applyAppMode(mode) {
     }
 }
 
+function getAiOverlayInputValue() {
+    const headerValue = document.getElementById("AiOverlayHeader")?.value?.trim();
+    const landingValue = document.getElementById("AiOverlay")?.value?.trim();
+    return headerValue || landingValue || "";
+}
+
+function setAiOverlayInputs(value) {
+    ["AiOverlay", "AiOverlayHeader"].forEach((id) => {
+        const input = document.getElementById(id);
+        if (input) input.value = value || "";
+    });
+}
+
 function buildBaseParams() {
     const params = new URLSearchParams();
 
     const chatUrl = document.getElementById("ChatUrl")?.value;
     if (chatUrl) params.set("Chat", encodeURIComponent(chatUrl));
+
+    const aiOverlay = getAiOverlayInputValue();
+    if (aiOverlay) params.set("ai", normalizeAiParamValue(aiOverlay));
+    if (new URLSearchParams(window.location.search).has("db")) params.set("db", "");
 
     if (
         window.overlay && window.overlay.points &&
@@ -379,6 +401,13 @@ function loadConfigFromUrl() {
         if (chatElement) chatElement.src = decodedChatUrl;
     }
 
+    // AI overlay widgets
+    const ai = params.get("ai");
+    if (ai) {
+        setAiOverlayInputs(ai);
+        setupAiWidget(ai);
+    }
+
     // Stone size
     const stoneSize = params.get("stone");
     if (stoneSize) {
@@ -411,6 +440,128 @@ function loadConfigFromUrl() {
     } else {
         window._pendingGridAutoHide = true;
     }
+}
+
+function normalizeAiParamValue(value) {
+    if (!value) return "";
+    return decodeURIComponent(value).trim()
+        .replace(new RegExp(`^${AI_PROD_ORIGIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`, "i"), "")
+        .replace(new RegExp(`^${AI_LOCAL_ORIGIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`, "i"), "")
+        .replace(/^\/+/, "")
+        .replace(/\?.*$/, "");
+}
+
+function normalizeAiPath(value) {
+    const stripped = normalizeAiParamValue(value);
+    const match = stripped.match(/^(game|review|demo)\/([^/]+)$/i);
+    return match ? `${match[1].toLowerCase()}/${encodeURIComponent(match[2])}` : null;
+}
+
+function shouldUseLocalAi() {
+    return new URLSearchParams(window.location.search).has("db");
+}
+
+function fitAiWidgetFrame(widget = document.getElementById("aiWidgetCombined")) {
+    const body = widget?.querySelector(".ai-widget-body");
+    const stack = widget?.querySelector(".ai-frame-stack");
+    if (!body || !stack) return;
+
+    const scale = Math.min(
+        body.clientWidth / AI_FRAME_BASE_WIDTH,
+        body.clientHeight / AI_FRAME_BASE_HEIGHT,
+    );
+    if (!Number.isFinite(scale) || scale <= 0) return;
+
+    stack.style.transform = `scale(${scale})`;
+}
+
+function buildAiFrameUrl(base, params) {
+    const url = new URL(base);
+    Object.entries(params).forEach(([key, value]) => {
+        url.searchParams.set(key, String(value));
+    });
+    return url.toString();
+}
+
+function setupAiWidget(value) {
+    const path = normalizeAiPath(value);
+    const widget = document.getElementById("aiWidgetCombined");
+    const frameConfigs = [
+        ["aiBlackClockFrame", { width: 105, black: "clock" }],
+        ["aiBlackNameFrame", { width: 140, black: "player" }],
+        ["aiPieFrame", { width: 70, element: "pie" }],
+        ["aiLegendFrame", { width: 70, element: "legend" }],
+        ["aiWhiteClockFrame", { width: 105, white: "clock" }],
+        ["aiWhiteNameFrame", { width: 140, white: "player" }],
+        ["aiBoardFrame", { width: AI_FRAME_BASE_WIDTH, element: "board" }],
+    ];
+    const frames = frameConfigs.map(([id]) => document.getElementById(id));
+    if (!widget || frames.some((frame) => !frame)) return;
+    if (!path) {
+        widget.dataset.active = "false";
+        frames.forEach((frame) => frame.removeAttribute("src"));
+        return;
+    }
+
+    const origin = shouldUseLocalAi() ? AI_LOCAL_ORIGIN : AI_PROD_ORIGIN;
+    const base = `${origin}/${path}`;
+    frameConfigs.forEach(([id, params]) => {
+        document.getElementById(id).src = buildAiFrameUrl(base, params);
+    });
+    widget.dataset.active = "true";
+    requestAnimationFrame(() => fitAiWidgetFrame(widget));
+}
+
+function setupAiWidgetDrag() {
+    document.querySelectorAll(".ai-widget").forEach((widget) => {
+        const handle = widget.querySelector(".ai-widget-header");
+        const toggle = widget.querySelector(".ai-widget-toggle");
+        const container = document.querySelector(".main-feed");
+        if (!widget || !handle || !container || widget.dataset.dragReady === "true") return;
+        widget.dataset.dragReady = "true";
+        new ResizeObserver(() => fitAiWidgetFrame(widget)).observe(widget);
+
+        toggle?.addEventListener("click", (event) => {
+            event.stopPropagation();
+            widget.classList.toggle("collapsed");
+            toggle.textContent = widget.classList.contains("collapsed") ? "" : "−";
+            requestAnimationFrame(() => fitAiWidgetFrame(widget));
+        });
+
+        let dragging = false;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        const move = (event) => {
+            if (!dragging) return;
+            const rect = container.getBoundingClientRect();
+            widget.style.left = `${event.clientX - rect.left - offsetX}px`;
+            widget.style.top = `${event.clientY - rect.top - offsetY}px`;
+            widget.style.right = "auto";
+        };
+
+        const stop = (event) => {
+            dragging = false;
+            widget.classList.remove("dragging");
+            handle.releasePointerCapture?.(event.pointerId);
+            document.removeEventListener("pointermove", move);
+            document.removeEventListener("pointerup", stop);
+        };
+
+        handle.addEventListener("pointerdown", (event) => {
+            if (event.button !== 0 && event.pointerType !== "touch") return;
+            if (event.target.closest(".ai-widget-toggle")) return;
+            event.preventDefault();
+            const widgetRect = widget.getBoundingClientRect();
+            offsetX = event.clientX - widgetRect.left;
+            offsetY = event.clientY - widgetRect.top;
+            dragging = true;
+            widget.classList.add("dragging");
+            handle.setPointerCapture?.(event.pointerId);
+            document.addEventListener("pointermove", move);
+            document.addEventListener("pointerup", stop);
+        });
+    });
 }
 
 function getHostTagFromParams(params) {
@@ -652,6 +803,7 @@ function setupViewerMode() {
         ".floating-toolbar",
         ".help-modal",
         ".name-modal",
+        "#aiWidgetLayer",
         "#landing",
     ];
 
@@ -709,6 +861,7 @@ function main() {
     window.loadConfigFromUrl = loadConfigFromUrl;
     window.updateSidePanelVisibility = updateSidePanelVisibility;
     window.generateViewerUrl = generateViewerUrl;
+    window.setupAiWidget = setupAiWidget;
 
     const initialMode = getAppModeFromUrl();
     window.appMode = initialMode;
@@ -731,6 +884,19 @@ function main() {
         }
 
         applyAppMode(window.appMode);
+
+        ["AiOverlay", "AiOverlayHeader"].forEach((id) => {
+            const aiInput = document.getElementById(id);
+            aiInput?.addEventListener("input", () => {
+                setupAiWidget(aiInput.value);
+                const otherId = id === "AiOverlay" ? "AiOverlayHeader" : "AiOverlay";
+                const otherInput = document.getElementById(otherId);
+                if (otherInput) otherInput.value = aiInput.value;
+                updateShareableUrl();
+            });
+        });
+
+        setupAiWidgetDrag();
 
         const iframeManager = new IframeManager();
         const uiManager = new UIManager(iframeManager);

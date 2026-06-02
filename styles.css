@@ -424,6 +424,171 @@ body, html {
     z-index: 2;
 }
 
+.ai-widget-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    pointer-events: none;
+}
+
+.ai-widget {
+    position: absolute;
+    width: min(420px, calc(100% - 36px));
+    height: min(560px, calc(100% - 36px));
+    display: none;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    border-radius: 12px;
+    background: rgba(20, 20, 22, 0.94);
+    pointer-events: auto;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.ai-widget-combined {
+    left: 0;
+    top: 0;
+}
+
+.ai-widget.dragging {
+    cursor: grabbing;
+    user-select: none;
+}
+
+.ai-widget-header {
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: grab;
+    border-radius: 8px 8px 0 0;
+    background: rgba(255, 255, 255, 0.22);
+    color: #222;
+    padding: 0 6px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.ai-widget-header:active {
+    cursor: grabbing;
+}
+
+.ai-widget-toggle {
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.12);
+    color: #222;
+    cursor: pointer;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.ai-widget-body {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 0 0 8px 8px;
+}
+
+.ai-widget.collapsed {
+    width: auto;
+    height: auto;
+}
+
+.ai-widget.collapsed .ai-widget-body {
+    display: none;
+}
+
+.ai-widget.collapsed .ai-widget-toggle {
+    font-size: 0;
+}
+
+.ai-widget.collapsed .ai-widget-toggle::before {
+    content: "□";
+    font-size: 14px;
+}
+
+body:not(.viewer-mode) .ai-widget[data-active="true"] {
+    display: flex;
+}
+
+.ai-frame-stack {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: 140px 140px 140px;
+    grid-template-rows: 92px 420px;
+    width: 420px;
+    height: 512px;
+    transform-origin: top left;
+    overflow: hidden;
+}
+
+.ai-widget iframe {
+    display: block;
+    border: 0;
+    background: transparent;
+    overflow: hidden;
+}
+
+.ai-player-cell,
+.ai-pie-cell {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.ai-black-cell {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.ai-pie-cell {
+    grid-column: 2;
+    grid-row: 1;
+    align-items: center;
+}
+
+.ai-white-cell {
+    grid-column: 3;
+    grid-row: 1;
+}
+
+.ai-clock-frame {
+    width: 105px;
+    height: 46px;
+}
+
+.ai-name-frame {
+    width: 140px;
+    height: 46px;
+}
+
+.ai-pie-frame {
+    width: 70px;
+    height: 72px;
+}
+
+.ai-legend-frame {
+    width: 70px;
+    height: 20px;
+}
+
+.ai-board-frame {
+    grid-column: 1 / 4;
+    grid-row: 2;
+    width: 420px;
+    height: 420px;
+}
+
 #drawingLayer {
     position: absolute;
     top: 0;
@@ -882,7 +1047,8 @@ iframe {
     gap: 12px;
 }
 
-.marker-toggle {
+.marker-toggle,
+.ai-header-input {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -892,12 +1058,25 @@ iframe {
     border: 1px solid rgba(255, 255, 255, 0.08);
     padding: 6px 10px;
     border-radius: 999px;
-    cursor: pointer;
     user-select: none;
+}
+
+.marker-toggle {
+    cursor: pointer;
 }
 
 .marker-toggle input {
     margin: 0;
+}
+
+.ai-header-input input {
+    width: 170px;
+    border: 0;
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--ink);
 }
 
 .obs-inline {
