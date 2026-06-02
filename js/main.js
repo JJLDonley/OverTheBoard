@@ -15,8 +15,10 @@ let drawingLayer = null;
 
 const AI_PROD_ORIGIN = "https://stream-ai.baduk.club";
 const AI_LOCAL_ORIGIN = "http://localhost:8080";
-const AI_FRAME_BASE_WIDTH = 420;
-const AI_FRAME_BASE_HEIGHT = 556;
+const AI_FRAME_DEFAULT_WIDTH = 300;
+const AI_FRAME_MIN_WIDTH = 160;
+const AI_RESPONSE_TIMEOUT_MS = 5000;
+let aiWidgetRequestId = 0;
 
 function getAppModeFromUrl() {
     const params = new URLSearchParams(window.location.search);
@@ -461,56 +463,90 @@ function shouldUseLocalAi() {
     return new URLSearchParams(window.location.search).has("db");
 }
 
-function fitAiWidgetFrame(widget = document.getElementById("aiWidgetCombined")) {
+function getAiPageSize(widget = document.getElementById("aiWidgetCombined")) {
     const body = widget?.querySelector(".ai-widget-body");
-    const stack = widget?.querySelector(".ai-frame-stack");
-    if (!body || !stack) return;
-
-    const scale = Math.min(
-        body.clientWidth / AI_FRAME_BASE_WIDTH,
-        body.clientHeight / AI_FRAME_BASE_HEIGHT,
-    );
-    if (!Number.isFinite(scale) || scale <= 0) return;
-
-    stack.style.transform = `scale(${scale})`;
+    const width = Math.max(AI_FRAME_MIN_WIDTH, Math.floor((body?.clientWidth || AI_FRAME_DEFAULT_WIDTH) - 16));
+    const height = Math.max(120, Math.floor((body?.clientHeight || 0) - 8));
+    return { width, height };
 }
 
-function buildAiFrameUrl(base, params) {
+function fitAiWidgetFrame(widget = document.getElementById("aiWidgetCombined"), updateSrc = false) {
+    const stack = widget?.querySelector(".ai-frame-stack");
+    const iframe = widget?.querySelector("iframe");
+    if (!widget || !stack || !iframe) return;
+
+    const { width, height } = getAiPageSize(widget);
+    stack.style.left = "8px";
+    stack.style.width = `${width}px`;
+    stack.style.height = `${height}px`;
+    stack.style.transform = "none";
+    iframe.style.width = `${width}px`;
+    iframe.style.height = `${height}px`;
+
+    const base = widget.dataset.aiBase;
+    const previousWidth = Number(stack.dataset.pageWidth) || 0;
+    stack.dataset.pageWidth = String(width);
+    if (updateSrc && base && Math.abs(width - previousWidth) >= 4) {
+        iframe.src = buildAiFrameUrl(base, width);
+    }
+}
+
+function buildAiFrameUrl(base, width) {
     const url = new URL(base);
-    Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.set(key, String(value));
-    });
+    url.searchParams.set("width", String(width));
     return url.toString();
 }
 
-function setupAiWidget(value) {
+function closeAiWidget(widget, frames) {
+    widget.dataset.active = "false";
+    frames.forEach((frame) => frame.removeAttribute("src"));
+}
+
+async function aiOriginResponds(origin) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_RESPONSE_TIMEOUT_MS);
+    try {
+        await fetch(origin, {
+            method: "GET",
+            mode: "no-cors",
+            cache: "no-store",
+            signal: controller.signal,
+        });
+        return true;
+    } catch {
+        return false;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function setupAiWidget(value) {
     const path = normalizeAiPath(value);
     const widget = document.getElementById("aiWidgetCombined");
-    const frameConfigs = [
-        ["aiBlackClockFrame", { width: 105, black: "clock" }],
-        ["aiBlackNameFrame", { width: 140, black: "player" }],
-        ["aiPieFrame", { width: 70, element: "pie" }],
-        ["aiLegendFrame", { width: 70, element: "legend" }],
-        ["aiWhiteClockFrame", { width: 105, white: "clock" }],
-        ["aiWhiteNameFrame", { width: 140, white: "player" }],
-        ["aiAreaFrame", { width: AI_FRAME_BASE_WIDTH, element: "area" }],
-        ["aiBoardFrame", { width: AI_FRAME_BASE_WIDTH, element: "board" }],
-    ];
-    const frames = frameConfigs.map(([id]) => document.getElementById(id));
-    if (!widget || frames.some((frame) => !frame)) return;
+    const iframe = document.getElementById("aiCombinedFrame");
+    const frames = [iframe].filter(Boolean);
+    if (!widget || !iframe) return;
     if (!path) {
-        widget.dataset.active = "false";
-        frames.forEach((frame) => frame.removeAttribute("src"));
+        closeAiWidget(widget, frames);
         return;
     }
 
+    const requestId = ++aiWidgetRequestId;
     const origin = shouldUseLocalAi() ? AI_LOCAL_ORIGIN : AI_PROD_ORIGIN;
+    if (!(await aiOriginResponds(origin))) {
+        if (requestId === aiWidgetRequestId) closeAiWidget(widget, frames);
+        return;
+    }
+    if (requestId !== aiWidgetRequestId) return;
+
     const base = `${origin}/${path}`;
-    frameConfigs.forEach(([id, params]) => {
-        document.getElementById(id).src = buildAiFrameUrl(base, params);
-    });
+    widget.dataset.aiBase = base;
     widget.dataset.active = "true";
-    requestAnimationFrame(() => fitAiWidgetFrame(widget));
+    requestAnimationFrame(() => {
+        fitAiWidgetFrame(widget);
+        const { width } = getAiPageSize(widget);
+        iframe.src = buildAiFrameUrl(base, width);
+    });
 }
 
 function setupAiWidgetDrag() {
@@ -520,7 +556,7 @@ function setupAiWidgetDrag() {
         const container = widget.closest(".ai-widget-layer");
         if (!widget || !handle || !container || widget.dataset.dragReady === "true") return;
         widget.dataset.dragReady = "true";
-        new ResizeObserver(() => fitAiWidgetFrame(widget)).observe(widget);
+        new ResizeObserver(() => fitAiWidgetFrame(widget, true)).observe(widget);
 
         toggle?.addEventListener("click", (event) => {
             event.stopPropagation();

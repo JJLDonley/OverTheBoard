@@ -527,12 +527,9 @@ body:not(.viewer-mode) .ai-widget[data-active="true"] {
 .ai-frame-stack {
     position: absolute;
     top: 0;
-    left: 0;
-    display: grid;
-    grid-template-columns: 140px 140px 140px;
-    grid-template-rows: 92px 44px 420px;
-    width: 420px;
-    height: 556px;
+    left: 8px;
+    width: calc(100% - 16px);
+    height: calc(100% - 8px);
     transform-origin: top left;
     overflow: hidden;
 }
@@ -544,61 +541,9 @@ body:not(.viewer-mode) .ai-widget[data-active="true"] {
     overflow: hidden;
 }
 
-.ai-player-cell,
-.ai-pie-cell {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.ai-black-cell {
-    grid-column: 1;
-    grid-row: 1;
-}
-
-.ai-pie-cell {
-    grid-column: 2;
-    grid-row: 1;
-    align-items: center;
-}
-
-.ai-white-cell {
-    grid-column: 3;
-    grid-row: 1;
-}
-
-.ai-clock-frame {
-    width: 105px;
-    height: 46px;
-}
-
-.ai-name-frame {
-    width: 140px;
-    height: 46px;
-}
-
-.ai-pie-frame {
-    width: 70px;
-    height: 72px;
-}
-
-.ai-legend-frame {
-    width: 70px;
-    height: 20px;
-}
-
-.ai-area-frame {
-    grid-column: 1 / 4;
-    grid-row: 2;
-    width: 420px;
-    height: 44px;
-}
-
-.ai-board-frame {
-    grid-column: 1 / 4;
-    grid-row: 3;
-    width: 420px;
-    height: 420px;
+.ai-combined-frame {
+    width: 100%;
+    height: 100%;
 }
 
 #drawingLayer {
