@@ -425,10 +425,15 @@ body, html {
 }
 
 .ai-widget-layer {
-    position: absolute;
+    position: fixed;
     inset: 0;
-    z-index: 4;
+    z-index: 9999;
     pointer-events: none;
+}
+
+.ai-widget-layer.dragging,
+.ai-widget-layer.active {
+    z-index: 9999;
 }
 
 .ai-widget {
@@ -440,7 +445,7 @@ body, html {
     gap: 0;
     padding: 0;
     border-radius: 12px;
-    background: rgba(20, 20, 22, 0.94);
+    background: rgb(89 89 89 / 45%);
     pointer-events: auto;
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
 }
@@ -451,6 +456,7 @@ body, html {
 }
 
 .ai-widget.dragging {
+    z-index: 9999;
     cursor: grabbing;
     user-select: none;
 }
@@ -498,7 +504,6 @@ body, html {
 }
 
 .ai-widget.collapsed {
-    width: auto;
     height: auto;
 }
 
@@ -525,9 +530,9 @@ body:not(.viewer-mode) .ai-widget[data-active="true"] {
     left: 0;
     display: grid;
     grid-template-columns: 140px 140px 140px;
-    grid-template-rows: 92px 420px;
+    grid-template-rows: 92px 44px 420px;
     width: 420px;
-    height: 512px;
+    height: 556px;
     transform-origin: top left;
     overflow: hidden;
 }
@@ -582,9 +587,16 @@ body:not(.viewer-mode) .ai-widget[data-active="true"] {
     height: 20px;
 }
 
-.ai-board-frame {
+.ai-area-frame {
     grid-column: 1 / 4;
     grid-row: 2;
+    width: 420px;
+    height: 44px;
+}
+
+.ai-board-frame {
+    grid-column: 1 / 4;
+    grid-row: 3;
     width: 420px;
     height: 420px;
 }

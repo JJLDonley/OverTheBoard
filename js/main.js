@@ -16,7 +16,7 @@ let drawingLayer = null;
 const AI_PROD_ORIGIN = "https://stream-ai.baduk.club";
 const AI_LOCAL_ORIGIN = "http://localhost:8080";
 const AI_FRAME_BASE_WIDTH = 420;
-const AI_FRAME_BASE_HEIGHT = 512;
+const AI_FRAME_BASE_HEIGHT = 556;
 
 function getAppModeFromUrl() {
     const params = new URLSearchParams(window.location.search);
@@ -493,6 +493,7 @@ function setupAiWidget(value) {
         ["aiLegendFrame", { width: 70, element: "legend" }],
         ["aiWhiteClockFrame", { width: 105, white: "clock" }],
         ["aiWhiteNameFrame", { width: 140, white: "player" }],
+        ["aiAreaFrame", { width: AI_FRAME_BASE_WIDTH, element: "area" }],
         ["aiBoardFrame", { width: AI_FRAME_BASE_WIDTH, element: "board" }],
     ];
     const frames = frameConfigs.map(([id]) => document.getElementById(id));
@@ -516,7 +517,7 @@ function setupAiWidgetDrag() {
     document.querySelectorAll(".ai-widget").forEach((widget) => {
         const handle = widget.querySelector(".ai-widget-header");
         const toggle = widget.querySelector(".ai-widget-toggle");
-        const container = document.querySelector(".main-feed");
+        const container = widget.closest(".ai-widget-layer");
         if (!widget || !handle || !container || widget.dataset.dragReady === "true") return;
         widget.dataset.dragReady = "true";
         new ResizeObserver(() => fitAiWidgetFrame(widget)).observe(widget);
@@ -543,6 +544,7 @@ function setupAiWidgetDrag() {
         const stop = (event) => {
             dragging = false;
             widget.classList.remove("dragging");
+            widget.closest(".ai-widget-layer")?.classList.remove("dragging");
             handle.releasePointerCapture?.(event.pointerId);
             document.removeEventListener("pointermove", move);
             document.removeEventListener("pointerup", stop);
@@ -557,6 +559,7 @@ function setupAiWidgetDrag() {
             offsetY = event.clientY - widgetRect.top;
             dragging = true;
             widget.classList.add("dragging");
+            widget.closest(".ai-widget-layer")?.classList.add("dragging", "active");
             handle.setPointerCapture?.(event.pointerId);
             document.addEventListener("pointermove", move);
             document.addEventListener("pointerup", stop);
