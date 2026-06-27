@@ -1207,7 +1207,13 @@ iframe {
 }
 
 /* Viewer mode canvas elements - both the element and renderer need to be 1920x1080 */
-body.viewer-mode .largeIframe,
+body.viewer-mode .largeIframe {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
 body.viewer-mode .largeCanvas {
     width: 1920px !important;
     height: 1080px !important;
@@ -1261,6 +1267,9 @@ body.viewer-mode .feed-container {
     top: 0 !important;
     left: 0 !important;
     background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
     overflow: hidden !important;
     display: block !important; /* Override flex if needed */
 }
@@ -1279,6 +1288,8 @@ body.viewer-mode .main-feed {
     transform: none !important;
     box-shadow: none !important;
     background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
     display: block !important;
 }
 

@@ -818,6 +818,7 @@ function setupViewerMode() {
         ".page-container",
         ".content-area",
         ".main-feed",
+        ".feed-container",
     ];
 
     containers.forEach((selector) => {
