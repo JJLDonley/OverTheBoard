@@ -487,13 +487,17 @@ function fitAiWidgetFrame(widget = document.getElementById("aiWidgetCombined"), 
     const previousWidth = Number(stack.dataset.pageWidth) || 0;
     stack.dataset.pageWidth = String(width);
     if (updateSrc && base && Math.abs(width - previousWidth) >= 4) {
-        iframe.src = buildAiFrameUrl(base, width);
+        iframe.src = buildAiFrameUrl(base, width, height);
     }
 }
 
-function buildAiFrameUrl(base, width) {
+function buildAiFrameUrl(base, width, height = null) {
     const url = new URL(base);
-    url.searchParams.set("width", String(width));
+    // The AI page scales by width only. If we request the full iframe width for
+    // a tall page, it can overflow vertically. Cap requested width by available
+    // height so the whole AI page scales down uniformly into the widget.
+    const fitWidth = height ? Math.min(width, Math.floor(height * 0.62)) : width;
+    url.searchParams.set("width", String(Math.max(AI_FRAME_MIN_WIDTH, fitWidth)));
     return url.toString();
 }
 
@@ -540,8 +544,8 @@ async function setupAiWidget(value) {
     widget.dataset.active = "true";
     requestAnimationFrame(() => {
         fitAiWidgetFrame(widget);
-        const { width } = getAiPageSize(widget);
-        iframe.src = buildAiFrameUrl(base, width);
+        const { width, height } = getAiPageSize(widget);
+        iframe.src = buildAiFrameUrl(base, width, height);
     });
 }
 
