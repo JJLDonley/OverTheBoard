@@ -857,8 +857,8 @@ function setupViewerMode() {
 
     const feedIframe = document.getElementById("feed");
     if (feedIframe) {
-        feedIframe.style.opacity = "1";
-        feedIframe.style.pointerEvents = "auto";
+        feedIframe.style.opacity = "0";
+        feedIframe.style.pointerEvents = "none";
     }
 
     const style = document.createElement("style");
