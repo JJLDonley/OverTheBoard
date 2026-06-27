@@ -20,9 +20,17 @@ const AI_FRAME_MIN_WIDTH = 160;
 const AI_RESPONSE_TIMEOUT_MS = 5000;
 let aiWidgetRequestId = 0;
 
+function getTrimmedParam(params, name) {
+    const target = name.toLowerCase();
+    for (const [key, value] of params.entries()) {
+        if (key.trim().toLowerCase() === target) return value.trim();
+    }
+    return null;
+}
+
 function getAppModeFromUrl() {
     const params = new URLSearchParams(window.location.search);
-    const role = params.get("role");
+    const role = getTrimmedParam(params, "role")?.toUpperCase();
 
     if (role === "VW") {
         return "viewer";
@@ -533,10 +541,6 @@ async function setupAiWidget(value) {
 
     const requestId = ++aiWidgetRequestId;
     const origin = shouldUseLocalAi() ? AI_LOCAL_ORIGIN : AI_PROD_ORIGIN;
-    if (!(await aiOriginResponds(origin))) {
-        if (requestId === aiWidgetRequestId) closeAiWidget(widget, frames);
-        return;
-    }
     if (requestId !== aiWidgetRequestId) return;
 
     const base = `${origin}/${path}`;
@@ -861,8 +865,8 @@ function setupViewerMode() {
 
     const feedIframe = document.getElementById("feed");
     if (feedIframe) {
-        feedIframe.style.opacity = "0";
-        feedIframe.style.pointerEvents = "none";
+        feedIframe.style.opacity = "1";
+        feedIframe.style.pointerEvents = "auto";
     }
 
     const style = document.createElement("style");
