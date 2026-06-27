@@ -438,8 +438,8 @@ body, html {
 
 .ai-widget {
     position: absolute;
-    width: min(420px, calc(100% - 36px));
-    height: min(720px, calc(100% - 36px));
+    width: 500px;
+    height: 900px;
     display: none;
     flex-direction: column;
     gap: 0;

@@ -491,13 +491,9 @@ function fitAiWidgetFrame(widget = document.getElementById("aiWidgetCombined"), 
     }
 }
 
-function buildAiFrameUrl(base, width, height = null) {
+function buildAiFrameUrl(base, width, _height = null) {
     const url = new URL(base);
-    // The AI page scales by width only. If we request the full iframe width for
-    // a tall page, it can overflow vertically. Cap requested width by available
-    // height so the whole AI page scales down uniformly into the widget.
-    const fitWidth = height ? Math.min(width, Math.floor(height * 0.62)) : width;
-    url.searchParams.set("width", String(Math.max(AI_FRAME_MIN_WIDTH, fitWidth)));
+    url.searchParams.set("width", String(width));
     return url.toString();
 }
 
