@@ -20,17 +20,9 @@ const AI_FRAME_MIN_WIDTH = 160;
 const AI_RESPONSE_TIMEOUT_MS = 5000;
 let aiWidgetRequestId = 0;
 
-function getTrimmedParam(params, name) {
-    const target = name.toLowerCase();
-    for (const [key, value] of params.entries()) {
-        if (key.trim().toLowerCase() === target) return value.trim();
-    }
-    return null;
-}
-
 function getAppModeFromUrl() {
     const params = new URLSearchParams(window.location.search);
-    const role = getTrimmedParam(params, "role")?.toUpperCase();
+    const role = params.get("role")?.toUpperCase();
 
     if (role === "VW") {
         return "viewer";
