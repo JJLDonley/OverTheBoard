@@ -1,3 +1,6 @@
+import { canUseBoardShortcut } from "./utils/keyboard.js";
+import { ScenePicker } from "./obs/scene-picker.js";
+import { AiPanels } from "./managers/ai-panels.js";
 import { debug } from "./utils/debugger.js";
 import { CONST, STONES } from "./constants.js";
 import { DrawingLayer } from "./canvas/drawing-layer.js";
@@ -15,10 +18,7 @@ let drawingLayer = null;
 
 const AI_PROD_ORIGIN = "https://stream-ai.baduk.club";
 const AI_LOCAL_ORIGIN = "http://localhost:8080";
-const AI_FRAME_DEFAULT_WIDTH = 300;
-const AI_FRAME_MIN_WIDTH = 160;
-const AI_RESPONSE_TIMEOUT_MS = 5000;
-let aiWidgetRequestId = 0;
+let aiPanels;
 
 function getAppModeFromUrl() {
     const params = new URLSearchParams(window.location.search);
@@ -61,9 +61,8 @@ function applyAppMode(mode) {
 }
 
 function getAiOverlayInputValue() {
-    const headerValue = document.getElementById("AiOverlayHeader")?.value?.trim();
     const landingValue = document.getElementById("AiOverlay")?.value?.trim();
-    return headerValue || landingValue || "";
+    return landingValue || "";
 }
 
 function setAiOverlayInputs(value) {
@@ -75,6 +74,10 @@ function setAiOverlayInputs(value) {
 
 function buildBaseParams() {
     const params = new URLSearchParams();
+
+    window.scenePicker?.appendParams(params);
+    const chatSession = new URLSearchParams(window.location.search).get("chatSession");
+    if (chatSession) params.set("chatSession", chatSession);
 
     const chatUrl = document.getElementById("ChatUrl")?.value;
     if (chatUrl) params.set("Chat", encodeURIComponent(chatUrl));
@@ -463,140 +466,8 @@ function shouldUseLocalAi() {
     return new URLSearchParams(window.location.search).has("db");
 }
 
-function getAiPageSize(widget = document.getElementById("aiWidgetCombined")) {
-    const body = widget?.querySelector(".ai-widget-body");
-    const width = Math.max(AI_FRAME_MIN_WIDTH, Math.floor((body?.clientWidth || AI_FRAME_DEFAULT_WIDTH) - 16));
-    const height = Math.max(120, Math.floor((body?.clientHeight || 0) - 8));
-    return { width, height };
-}
-
-function fitAiWidgetFrame(widget = document.getElementById("aiWidgetCombined"), updateSrc = false) {
-    const stack = widget?.querySelector(".ai-frame-stack");
-    const iframe = widget?.querySelector("iframe");
-    if (!widget || !stack || !iframe) return;
-
-    const { width, height } = getAiPageSize(widget);
-    stack.style.left = "8px";
-    stack.style.width = `${width}px`;
-    stack.style.height = `${height}px`;
-    stack.style.transform = "none";
-    iframe.style.width = `${width}px`;
-    iframe.style.height = `${height}px`;
-
-    const base = widget.dataset.aiBase;
-    const previousWidth = Number(stack.dataset.pageWidth) || 0;
-    stack.dataset.pageWidth = String(width);
-    if (updateSrc && base && Math.abs(width - previousWidth) >= 4) {
-        iframe.src = buildAiFrameUrl(base, width, height);
-    }
-}
-
-function buildAiFrameUrl(base, width, _height = null) {
-    const url = new URL(base);
-    url.searchParams.set("width", String(width));
-    return url.toString();
-}
-
-function closeAiWidget(widget, frames) {
-    widget.dataset.active = "false";
-    frames.forEach((frame) => frame.removeAttribute("src"));
-}
-
-async function aiOriginResponds(origin) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), AI_RESPONSE_TIMEOUT_MS);
-    try {
-        await fetch(origin, {
-            method: "GET",
-            mode: "no-cors",
-            cache: "no-store",
-            signal: controller.signal,
-        });
-        return true;
-    } catch {
-        return false;
-    } finally {
-        clearTimeout(timeout);
-    }
-}
-
-async function setupAiWidget(value) {
-    const path = normalizeAiPath(value);
-    const widget = document.getElementById("aiWidgetCombined");
-    const iframe = document.getElementById("aiCombinedFrame");
-    const frames = [iframe].filter(Boolean);
-    if (!widget || !iframe) return;
-    if (!path) {
-        closeAiWidget(widget, frames);
-        return;
-    }
-
-    const requestId = ++aiWidgetRequestId;
-    const origin = shouldUseLocalAi() ? AI_LOCAL_ORIGIN : AI_PROD_ORIGIN;
-    if (requestId !== aiWidgetRequestId) return;
-
-    const base = `${origin}/${path}`;
-    widget.dataset.aiBase = base;
-    widget.dataset.active = "true";
-    requestAnimationFrame(() => {
-        fitAiWidgetFrame(widget);
-        const { width, height } = getAiPageSize(widget);
-        iframe.src = buildAiFrameUrl(base, width, height);
-    });
-}
-
-function setupAiWidgetDrag() {
-    document.querySelectorAll(".ai-widget").forEach((widget) => {
-        const handle = widget.querySelector(".ai-widget-header");
-        const toggle = widget.querySelector(".ai-widget-toggle");
-        const container = widget.closest(".ai-widget-layer");
-        if (!widget || !handle || !container || widget.dataset.dragReady === "true") return;
-        widget.dataset.dragReady = "true";
-        new ResizeObserver(() => fitAiWidgetFrame(widget, true)).observe(widget);
-
-        toggle?.addEventListener("click", (event) => {
-            event.stopPropagation();
-            widget.classList.toggle("collapsed");
-            toggle.textContent = widget.classList.contains("collapsed") ? "" : "−";
-            requestAnimationFrame(() => fitAiWidgetFrame(widget));
-        });
-
-        let dragging = false;
-        let offsetX = 0;
-        let offsetY = 0;
-
-        const move = (event) => {
-            if (!dragging) return;
-            const rect = container.getBoundingClientRect();
-            widget.style.left = `${event.clientX - rect.left - offsetX}px`;
-            widget.style.top = `${event.clientY - rect.top - offsetY}px`;
-            widget.style.right = "auto";
-        };
-
-        const stop = (event) => {
-            dragging = false;
-            widget.classList.remove("dragging");
-            widget.closest(".ai-widget-layer")?.classList.remove("dragging");
-            handle.releasePointerCapture?.(event.pointerId);
-            document.removeEventListener("pointermove", move);
-            document.removeEventListener("pointerup", stop);
-        };
-
-        handle.addEventListener("pointerdown", (event) => {
-            if (event.button !== 0 && event.pointerType !== "touch") return;
-            if (event.target.closest(".ai-widget-toggle")) return;
-            event.preventDefault();
-            const widgetRect = widget.getBoundingClientRect();
-            offsetX = event.clientX - widgetRect.left;
-            offsetY = event.clientY - widgetRect.top;
-            dragging = true;
-            widget.classList.add("dragging");
-            widget.closest(".ai-widget-layer")?.classList.add("dragging", "active");
-            handle.setPointerCapture?.(event.pointerId);
-            document.addEventListener("pointermove", move);
-            document.addEventListener("pointerup", stop);
-        });
-    });
+function setupAiWidget(value) {
+    aiPanels?.setContext(value);
 }
 
 function getHostTagFromParams(params) {
@@ -921,22 +792,24 @@ function main() {
 
         applyAppMode(window.appMode);
 
-        ["AiOverlay", "AiOverlayHeader"].forEach((id) => {
-            const aiInput = document.getElementById(id);
-            aiInput?.addEventListener("input", () => {
-                setupAiWidget(aiInput.value);
-                const otherId = id === "AiOverlay" ? "AiOverlayHeader" : "AiOverlay";
-                const otherInput = document.getElementById(otherId);
-                if (otherInput) otherInput.value = aiInput.value;
+        aiPanels = new AiPanels({
+            normalize: normalizeAiPath,
+            origin: () => shouldUseLocalAi() ? AI_LOCAL_ORIGIN : AI_PROD_ORIGIN,
+            onApply: (value) => {
+                setAiOverlayInputs(value);
                 updateShareableUrl();
-            });
+            },
         });
-
-        setupAiWidgetDrag();
+        document.getElementById("AiOverlay")?.addEventListener("input", (event) => {
+            setAiOverlayInputs(event.target.value);
+            setupAiWidget(event.target.value);
+            updateShareableUrl();
+        });
 
         const iframeManager = new IframeManager();
         const uiManager = new UIManager(iframeManager);
         const obsController = new OBSController();
+        window.scenePicker = new ScenePicker(obsController);
         const networkManager = new NetworkManager();
 
         window.iframeManager = iframeManager;
@@ -944,6 +817,7 @@ function main() {
         window.networkManager = networkManager;
 
         loadConfigFromUrl();
+        iframeManager.updateFeaturedChat();
         ensureDefaultNetworkRoom();
 
         setupHostSlots();
@@ -1022,6 +896,7 @@ function main() {
         }
 
         document.addEventListener("keydown", (e) => {
+            if (!canUseBoardShortcut(e)) return;
             const activeElement = document.activeElement;
 
             const isInputField = activeElement && (

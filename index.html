@@ -6,10 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Board Reviews</title>
     <link rel="stylesheet" href="styles.css">
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
-    >
+
   </head>
   <body>
     <div id="landing" class="landing-page">
@@ -65,6 +62,7 @@
 
             <details class="landing-advanced">
               <summary>Advanced</summary>
+              <section id="advancedSceneSettings" class="scene-settings"><h3>Tenjin scenes</h3></section>
               <div class="landing-advanced-grid">
                 <label for="StoneSize">Stone Size (stone)</label>
                 <input type="number" id="StoneSize" value="80" min="20" max="200">
@@ -110,16 +108,7 @@
             <input type="checkbox" id="stoneMarkerToggle">
             Triangle Labels
           </label>
-          <label class="ai-header-input">
-            AI:
-            <input
-              type="text"
-              id="AiOverlayHeader"
-              placeholder="type/id"
-              autocomplete="off"
-              spellcheck="false"
-            >
-          </label>
+          <button id="openAi" type="button" aria-haspopup="dialog">AI</button>
         </div>
 
         <div id="obsControlPanel" class="tool-panel obs-inline">
@@ -131,21 +120,7 @@
               >Disconnected</span>
             </div>
             <div class="obs-scenes">
-              <div class="scene-controls">
-                <div id="obsSceneButtons" class="scene-buttons">
-                  <!-- Scene buttons will be dynamically added here -->
-                </div>
-                <div
-                  id="obsSceneDropdown"
-                  class="scene-dropdown"
-                  style="display: none"
-                >
-                  <label for="obsSceneSelect">Scene:</label>
-                  <select id="obsSceneSelect" disabled>
-                    <option value="">No scenes available</option>
-                  </select>
-                </div>
-              </div>
+              <button id="openScenes" class="obs-btn" type="button" aria-haspopup="dialog">Scenes</button>
               <div class="stream-controls">
                 <button id="obsStreamToggle" class="obs-btn" disabled>
                   Start Stream
@@ -221,6 +196,9 @@
         <div class="feed-container">
           <div class="main-feed">
             <iframe id="feed" class="largeIframe" allow="autoplay"></iframe>
+            <div id="aiWidgetLayer" class="ai-widget-layer"></div>
+            <iframe id="featuredChat" title="Highlighted chat message" tabindex="-1" aria-hidden="true" hidden></iframe>
+            <button id="dismissFeaturedChat" class="featured-chat-dismiss" type="button" aria-label="Dismiss highlighted message" title="Dismiss highlighted message" hidden>×</button>
             <canvas
               id="overlay"
               class="largeCanvas"
@@ -238,19 +216,7 @@
               style="outline: none"
             ></canvas>
           </div>
-          <div id="aiWidgetLayer" class="ai-widget-layer" aria-hidden="true">
-            <div id="aiWidgetCombined" class="ai-widget ai-widget-combined">
-              <div class="ai-widget-header" title="Drag AI widget">
-                <span class="ai-widget-title">AI</span>
-                <button class="ai-widget-toggle" type="button" aria-label="Collapse AI widget">−</button>
-              </div>
-              <div class="ai-widget-body">
-                <div id="aiFrameStack" class="ai-frame-stack">
-                  <iframe id="aiCombinedFrame" class="ai-frame ai-combined-frame" title="AI overlay"></iframe>
-                </div>
-              </div>
-            </div>
-          </div>
+
         </div>
         <div class="SidePanel">
           <div
@@ -264,6 +230,7 @@
             ></iframe>
           </div>
           <div class="Chat">
+            <p class="chat-highlight-hint">Click Message To Highlight</p>
             <iframe id="chat" class="smallIframe" allow="autoplay"></iframe>
           </div>
         </div>
@@ -272,6 +239,37 @@
       <div class="footer">
         <p>This website was designed and developed by TangJieHao.</p>
       </div>
+
+      <dialog id="sceneModal" class="scene-modal" aria-labelledby="sceneModalTitle">
+        <header class="ai-modal-header"><h2 id="sceneModalTitle">Scenes</h2><button id="closeScenes" type="button" aria-label="Close scenes">×</button></header>
+        <p id="scenePickerStatus" role="status"></p>
+        <div id="scenePreviewGrid" class="scene-preview-grid"></div>
+        <details class="scene-settings"><summary>Preview settings</summary>
+          <form id="sceneSettings">
+            <label>Mini-PC ID <input id="sceneMiniPc" type="number" min="1" step="1" required value="3"></label>
+            <p>Use {pc} in each Tenjin path. Map each preview to its exact OBS scene name.</p>
+            <div id="sceneConfigRows"></div>
+            <button type="submit">Apply settings</button>
+          </form>
+        </details>
+      </dialog>
+
+      <dialog id="aiModal" class="ai-modal" aria-labelledby="aiModalTitle">
+        <header class="ai-modal-header">
+          <h2 id="aiModalTitle">AI review</h2>
+          <button id="closeAi" type="button" aria-label="Close AI review">×</button>
+        </header>
+        <form id="aiSourceForm" class="ai-source-form">
+          <label for="AiOverlayHeader">Game or review</label>
+          <input id="AiOverlayHeader" placeholder="game/123456 or review/123456" autocomplete="off" spellcheck="false">
+          <button type="submit">Load analysis</button>
+          <p id="aiInputError" role="alert"></p>
+        </form>
+        <p class="ai-modal-hint">Pin views to keep them over the board. Drag by the heading.</p>
+        <fieldset id="aiViewChoices"><legend>Analysis views</legend></fieldset>
+
+        <div id="aiPanelGrid" class="ai-panel-grid"></div>
+      </dialog>
 
       <div id="helpModal" class="help-modal hidden" role="dialog" aria-modal="true">
         <div class="help-modal-content">
@@ -282,7 +280,7 @@
           <div class="help-modal-body">
             <div class="help-section">
               <h4>Shortcuts</h4>
-              <p>S = Grid | R = Reset | Del = Clear All | Space = Clear Own Data | Q = Switch Color | Left/Right or Scroll = Undo/Redo Stones</p>
+              <p>1–3 = Stones | 4 = Draw | 5–8 = Marks | C = Coordinates | K = Color | S = Grid | R = Reset | Del = Clear All | Space = Clear Own Data | Q = Switch Color | Left/Right or Scroll = Undo/Redo Stones</p>
             </div>
             <div class="help-section">
               <h4>Board Controls</h4>

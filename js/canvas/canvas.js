@@ -1,3 +1,4 @@
+import { canUseBoardShortcut } from "../utils/keyboard.js";
 import { CONST, GRIDSIZE, STONES } from "../constants.js";
 import { getHostColor } from "../utils/color-utils.js";
 import { debug } from "../utils/debugger.js";
@@ -12,7 +13,7 @@ export class Canvas {
     constructor(element) {
         this.canvas = document.getElementById(element);
         this.context = this.canvas.getContext("2d");
-        this.gridElement = document.getElementById("GridElement");
+        this.gridElement = document.getElementById("GridBtn");
         this.show = true;
         this.showCoordinates = true;
         this.initializeCanvas();
@@ -83,9 +84,10 @@ export class Canvas {
             window.setCurrentTool(tool);
         }
 
-        document.querySelectorAll(".tool-btn").forEach((btn) =>
-            btn.classList.remove("active")
-        );
+        document.querySelectorAll(".tool-btn:not(#GridBtn):not(#CoordBtn)").forEach((btn) => {
+            btn.classList.remove("active");
+            btn.setAttribute("aria-pressed", "false");
+        });
 
         const toolButtons = {
             "BLACK": "BlackStoneBtn",
@@ -98,7 +100,10 @@ export class Canvas {
             "LETTER": "LetterBtn",
         };
         const activeButton = document.getElementById(toolButtons[tool]);
-        if (activeButton) activeButton.classList.add("active");
+        if (activeButton) {
+            activeButton.classList.add("active");
+            activeButton.setAttribute("aria-pressed", "true");
+        }
 
         const drawingLayerElement = document.getElementById("drawingLayer");
         if (drawingLayerElement) {
@@ -362,6 +367,7 @@ export class Canvas {
         });
 
         document.addEventListener("keydown", (event) => {
+            if (!canUseBoardShortcut(event)) return;
             // Don't trigger shortcuts if user is typing in any input field
             const activeElement = document.activeElement;
             const isInputField = activeElement && (
@@ -416,31 +422,17 @@ export class Canvas {
                     return;
                 }
                 this.showCoordinates = !this.showCoordinates;
+                this.updateCoordinateButtonState();
             });
         }
     }
 
     updateGridButtonState() {
-        if (!this.gridElement) return; // Ensure gridElement is not null
-        // Use SVG icons for grid on/off
-        const gridOnIcon =
-            `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="16" height="16" rx="2" stroke="white" stroke-width="2"/><path d="M2 7H18" stroke="white" stroke-width="2"/><path d="M2 13H18" stroke="white" stroke-width="2"/><path d="M7 2V18" stroke="white" stroke-width="2"/><path d="M13 2V18" stroke="white" stroke-width="2"/></svg>`;
-        const gridOffIcon =
-            `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="16" height="16" rx="2" stroke="#666" stroke-width="2"/><path d="M2 7H18" stroke="#666" stroke-width="2"/><path d="M2 13H18" stroke="#666" stroke-width="2"/><path d="M7 2V18" stroke="#666" stroke-width="2"/><path d="M13 2V18" stroke="#666" stroke-width="2"/></svg>`;
-
-        // In viewer mode, always show grid as off (even though coordinates may be visible)
-        const effectiveShow = window.isViewerMode ? false : this.show;
-
-        if (effectiveShow) {
-            this.gridElement.classList.add("active");
-            this.gridElement.innerHTML = gridOnIcon;
-        } else {
-            this.gridElement.classList.remove("active");
-            this.gridElement.innerHTML = gridOffIcon;
+        const visible = !window.isViewerMode && this.show;
+        if (this.gridElement) {
+            this.gridElement.classList.toggle("active", visible);
+            this.gridElement.setAttribute("aria-pressed", String(visible));
         }
-        this.gridElement.dataset.show = effectiveShow.toString();
-
-        // Also update coordinate button state
         this.updateCoordinateButtonState();
     }
 
@@ -453,6 +445,7 @@ export class Canvas {
             ? true
             : this.showCoordinates;
 
+        coordBtn.setAttribute("aria-pressed", String(effectiveShowCoordinates));
         if (effectiveShowCoordinates) {
             coordBtn.classList.add("active");
         } else {
