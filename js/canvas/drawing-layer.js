@@ -73,10 +73,14 @@ export class DrawingLayer {
         // Listen for color changes
         const colorInput = document.getElementById("markupColor");
         if (colorInput) {
-            colorInput.addEventListener("input", () => {
-                this.context.strokeStyle = this.getPenColor();
-            });
+            const updateColor = () => {
+                window.currentUserColor = colorInput.value;
+                this.context.strokeStyle = colorInput.value;
+            };
+            colorInput.addEventListener("input", updateColor);
+            colorInput.addEventListener("change", updateColor);
         }
+
     }
 
     startDrawing(e) {

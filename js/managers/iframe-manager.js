@@ -8,6 +8,7 @@ export class IframeManager {
             chat: document.getElementById("chat")
         };
         this.vdoNinjaBase = "https://vdo.ninja/?";
+        this.setupFeaturedChatDismissal();
         this.parseUrlParams();
         if (window.updateSidePanelVisibility) {
             window.updateSidePanelVisibility();
@@ -48,6 +49,73 @@ export class IframeManager {
             if (obsInput) obsInput.value = decodedObsLink;
             this.setUrl('obs', decodedObsLink);
         }
+    }
+
+    setupFeaturedChatDismissal() {
+        const frame = document.getElementById('featuredChat');
+        const button = document.getElementById('dismissFeaturedChat');
+        if (!frame || !button) return;
+        this.hideFeaturedChat = () => {
+            clearTimeout(this.featuredChatTimer);
+            frame.style.visibility = 'hidden';
+            button.hidden = true;
+        };
+        button.addEventListener('click', () => {
+            this.hideFeaturedChat();
+            document.getElementById('overlay')?.focus({ preventScroll: true });
+        });
+        window.addEventListener('message', (event) => {
+            // Only trust visibility notifications from our Social Stream iframe.
+            if (event.origin !== 'https://socialstream.ninja' ||
+                event.source !== frame.contentWindow ||
+                window.appMode !== 'commentator' || frame.hidden) return;
+            const height = event.data?.resizeWindow?.height;
+            if (height === '0px') {
+                this.hideFeaturedChat();
+            } else if (height === '220px') {
+                clearTimeout(this.featuredChatTimer);
+                frame.style.visibility = 'visible';
+                button.hidden = false;
+                // Social Stream does not send a resize notification on showtime expiry.
+                this.featuredChatTimer = setTimeout(this.hideFeaturedChat, 10000);
+            }
+        });
+        this.hideFeaturedChat();
+    }
+
+    updateFeaturedChat() {
+        const frame = document.getElementById('featuredChat');
+        if (!frame) return;
+        if (window.appMode !== 'commentator') {
+            this.hideFeaturedChat?.();
+            frame.hidden = true;
+            frame.removeAttribute('src');
+            return;
+        }
+        const params = new URLSearchParams(window.location.search);
+        const configuredSession = params.get('chatSession')?.trim();
+        let session = configuredSession || 'zyab4FcJGh';
+        const chatInput = document.getElementById('ChatUrl');
+        try {
+            const chatUrl = new URL(chatInput.value);
+            if (chatUrl.hostname === 'socialstream.ninja') {
+                session = configuredSession || chatUrl.searchParams.get('session') || session;
+                chatUrl.searchParams.set('session', session);
+                if (configuredSession) {
+                    chatInput.value = chatUrl.toString();
+                    this.setUrl('chat', chatInput.value);
+                }
+            }
+        } catch {
+            // A custom or empty chat URL does not change the featured default.
+        }
+        const url = 'https://socialstream.ninja/featured.html?session=' +
+            encodeURIComponent(session) + '&showtime=10000&server&server2&server3';
+        if (frame.getAttribute('src') !== url) {
+            this.hideFeaturedChat?.();
+            frame.src = url;
+        }
+        frame.hidden = false;
     }
 
     setVdoNinjaUrl(element, params) {

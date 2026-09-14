@@ -1,3 +1,4 @@
+import { setupToolbarTools } from "./toolbar.js";
 import { debug } from "../utils/debugger.js";
 
 export class UIManager {
@@ -10,6 +11,7 @@ export class UIManager {
         this.toolbarHandle = document.querySelector(".toolbar-handle");
 
         this.bindEventListeners();
+        setupToolbarTools();
     }
 
     bindEventListeners() {
@@ -97,6 +99,8 @@ export class UIManager {
                             window.updateSidePanelVisibility();
                         }
                     }
+                    this.iframeManager.updateFeaturedChat();
+                    window.updateShareableUrl?.();
                 } else if (id === "NetworkRoom") {
                     const roomName = el.value.trim();
                     if (roomName && window.networkManager) {
