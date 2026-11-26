@@ -26,7 +26,7 @@ try {
     await page.goto(base.href);
     await page.waitForFunction(() => !!window.obsController && !!window.cursorLabel);
     await page.locator('#openScenes').click();
-    const names = ['Main stream', 'Intro', 'Hosts', 'Interview'];
+    const names = ['Main', 'Intro', 'Hosts', 'Interview'];
     await page.locator('.scene-settings summary').click();
     for (const name of names) {
         check(await page.getByLabel(`${name} OBS scene name`, { exact: true }).inputValue() === name, `${name} default mapping`);
@@ -50,6 +50,14 @@ try {
         await state(name);
         await page.waitForFunction(name => document.querySelector('.scene-preview-card.active strong')?.textContent === name, name);
     }
+    // Real VDO sends empty details and visibility-only messages after its
+    // initial scene list; those must not disable working scene controls.
+    await relay.evaluate(() => {
+        parent.postMessage({ action: 'obs-state', value: { details: {} } }, '*');
+        parent.postMessage({ action: 'obs-state', value: { visibility: true } }, '*');
+    });
+    await page.waitForTimeout(100);
+    check(await page.evaluate(() => window.obsController.isConnected), 'partial status preserves connection');
     await state('Interview', false);
     check(await page.locator('.scene-preview-card:disabled').count() === 4, 'disconnect disables switching');
     await page.keyboard.press('Escape');
@@ -58,8 +66,8 @@ try {
     await page.waitForFunction(() => !!window.scenePicker);
     await page.locator('.landing-advanced summary').click();
     await page.locator('#sceneMiniPc').fill('7');
-    await page.getByLabel('Main stream OBS scene name', { exact: true }).fill('Board & Players');
-    await page.getByLabel('Main stream preview URL', { exact: true }).fill('/stream-overlay/{pc}?title=A&B=2');
+    await page.getByLabel('Main OBS scene name', { exact: true }).fill('Board & Players');
+    await page.getByLabel('Main preview URL', { exact: true }).fill('/stream-overlay/{pc}?title=A&B=2');
     await page.getByRole('button', { name: 'Apply settings', exact: true }).click();
     const shared = new URL(await page.locator('.host-link').first().getAttribute('data-url'));
     check(shared.searchParams.get('miniPc') === '7', 'shared mini PC');
@@ -72,7 +80,7 @@ try {
     await page.locator('#openScenes').click();
     check(await page.locator('#scenePreviewGrid iframe').count() === 4, 'URL overrides locally disabled scene');
     check((await page.locator('#scenePreviewGrid iframe').first().getAttribute('src')) === 'https://app.baduk.club/stream-overlay/7?title=A&B=2', 'shared preview URL and PC');
-    check(await page.getByLabel('Main stream OBS scene name', {exact:true}).inputValue() === 'Board & Players', 'shared OBS name overrides storage');
+    check(await page.getByLabel('Main OBS scene name', {exact:true}).inputValue() === 'Board & Players', 'shared OBS name overrides storage');
     check(errors.length === 0, errors.join('\n'));
     console.log('PASS: four default names, relay commands, confirmed Live indicators, disconnect, preview cleanup, Advanced settings and shared URL round trip');
 } finally {

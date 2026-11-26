@@ -1,3 +1,5 @@
+import { TimerControls } from "./obs/timer-controls.js";
+import { TournamentLoader } from "./managers/tournament-loader.js";
 import { canUseBoardShortcut } from "./utils/keyboard.js";
 import { ScenePicker } from "./obs/scene-picker.js";
 import { AiPanels } from "./managers/ai-panels.js";
@@ -76,8 +78,13 @@ function buildBaseParams() {
     const params = new URLSearchParams();
 
     window.scenePicker?.appendParams(params);
+    const aiOrigin = window.tournamentAiOrigin || new URLSearchParams(window.location.search).get("aiOrigin");
+    if (aiOrigin) params.set("aiOrigin", aiOrigin);
     const chatSession = new URLSearchParams(window.location.search).get("chatSession");
     if (chatSession) params.set("chatSession", chatSession);
+
+    const timerUrl = document.getElementById("TimerUrl")?.value;
+    if (timerUrl && !window.isViewerMode) params.set("Timer", timerUrl);
 
     const chatUrl = document.getElementById("ChatUrl")?.value;
     if (chatUrl) params.set("Chat", encodeURIComponent(chatUrl));
@@ -755,6 +762,7 @@ function generateViewerUrl() {
 
     params.delete("obs");
     params.delete("Chat");
+    params.delete("Timer");
     params.set("role", "VW");
 
     baseUrl.search = params.toString();
@@ -794,7 +802,14 @@ function main() {
 
         aiPanels = new AiPanels({
             normalize: normalizeAiPath,
-            origin: () => shouldUseLocalAi() ? AI_LOCAL_ORIGIN : AI_PROD_ORIGIN,
+            origin: () => {
+                const configured = window.tournamentAiOrigin || new URLSearchParams(window.location.search).get("aiOrigin");
+                try {
+                    const url = new URL(configured);
+                    if (["https:", "http:"].includes(url.protocol) && !url.username && !url.password) return url.origin;
+                } catch { /* Use the default analysis server. */ }
+                return shouldUseLocalAi() ? AI_LOCAL_ORIGIN : AI_PROD_ORIGIN;
+            },
             onApply: (value) => {
                 setAiOverlayInputs(value);
                 updateShareableUrl();
@@ -810,6 +825,7 @@ function main() {
         const uiManager = new UIManager(iframeManager);
         const obsController = new OBSController();
         window.scenePicker = new ScenePicker(obsController);
+        window.timerControls = new TimerControls();
         const networkManager = new NetworkManager();
 
         window.iframeManager = iframeManager;
@@ -822,6 +838,7 @@ function main() {
 
         setupHostSlots();
         updateLandingLinks();
+        new TournamentLoader();
 
         await handleUserLabel();
 

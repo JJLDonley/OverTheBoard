@@ -1261,9 +1261,10 @@ body.viewer-mode #landing {
 /* Featured messages stay within the board feed and leave drawing interactive. */
 #featuredChat {
     position: absolute;
-    inset: 0 0 0 44px;
-    width: calc(100% - 44px);
-    height: 100%;
+    left: 44px;
+    bottom: 8px;
+    width: min(560px, calc(100% - 60px));
+    height: min(300px, 60%);
     z-index: 4;
     background: transparent;
     pointer-events: none;
@@ -1431,3 +1432,27 @@ body.viewer-mode #landing {
 #advancedSceneSettings p { color: var(--ink-muted); }
 #advancedSceneSettings input:not([type="checkbox"]) { box-sizing: border-box; width: 100%; border: 1px solid #bbb; border-radius: 8px; padding: 8px; background: #fff; color: var(--ink); }
 #advancedSceneSettings label { font-size: 13px; }
+
+#tournamentCodeForm {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(46, 38, 30, 0.15);
+}
+#tournamentCodeForm select {
+    border-radius: 10px;
+    border: 1px solid rgba(46, 38, 30, 0.2);
+    padding: 10px 12px;
+    background: #fff;
+    color: var(--ink);
+    width: 100%;
+}
+#tournamentCodeForm details input {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    margin-top: 8px;
+}
+#tournamentLoadStatus:empty { display: none; }
+
+#timerModal { max-width: 620px; }
+#timerControls { width: 100%; height: 360px; border: 0; }

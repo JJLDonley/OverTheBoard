@@ -54,7 +54,7 @@ Chat:
 
 Scenes:
 * Added Tenjin preview modal
-* Enabled Main stream, Intro, Hosts, and Interview previews
+* Enabled Main, Intro, Hosts, and Interview previews
 * Added click-to-switch OBS scene selection
 * Added confirmed Live indicators and preview tooltips
 * Added Advanced Settings and shared URLs for Tenjin pages
@@ -145,7 +145,7 @@ scene commands, confirmation, disconnect handling, and shared settings.
 ### Scene Management
 - **Scenes** opens a modal with Tenjin previews; selecting a configured preview requests its matching OBS scene.
 - **Preview settings** sets the mini-PC ID (default `3`), Tenjin URL/path, exact OBS scene name, and enabled state for each card. `{pc}` is replaced with the mini-PC ID.
-- OBS scene names default to `Main stream`, `Intro`, `Hosts`, and `Interview`. Custom saved names are preserved; names can be changed in Preview settings.
+- OBS scene names default to `Main`, `Intro`, `Hosts`, and `Interview`. Custom saved names are preserved; names can be changed in Preview settings.
 - All four previews are enabled by default: `/stream-overlay/{pc}`, `/intro/{pc}`, `/hosts/{pc}`, and `/interview/{pc}`. Older placeholder settings are automatically enabled.
 - Configure Tenjin scenes under **Session Setup > Advanced**, then click **Apply settings** to update generated links. The same settings are available inside the Scenes modal.
 - Shared links include `miniPc` and `sceneMainUrl`, `sceneMainName`, `sceneMainEnabled` (also `Intro`, `Hosts`, and `Interview`). Enabled is `1` or `0`; URLs support `{pc}`. URL parameters override browser settings. Values are encoded automatically when generating links.
@@ -180,7 +180,7 @@ scene commands, confirmation, disconnect handling, and shared settings.
 
 - `miniPc` sets the positive numeric mini-PC ID (default `3`).
 - Preview values accept a path such as `/intro/{pc}` or a full HTTPS URL on `app.baduk.club`. `{pc}` is replaced with the mini-PC ID.
-- OBS scene names must match exactly. Defaults are `Main stream`, `Intro`, `Hosts`, and `Interview`.
+- OBS scene names must match exactly. Defaults are `Main`, `Intro`, `Hosts`, and `Interview`.
 - Enabled values are `1` (on) and `0` (off). All four scenes are enabled by default.
 - URL parameters override saved browser settings. Omitted parameters use saved settings or defaults.
 
@@ -196,7 +196,7 @@ For manual editing, append this example to an existing commentator URL that alre
 &miniPc=3&sceneIntroUrl=%2Fintro%2F%7Bpc%7D&sceneIntroName=Intro&sceneIntroEnabled=1
 ```
 
-This loads `/intro/3` and maps it to the OBS scene `Intro`. Use `?` instead of the first `&` when starting a new query string. Encode each parameter value once; for example, `Main stream` becomes `Main%20stream`.
+This loads `/intro/3` and maps it to the OBS scene `Intro`. Use `?` instead of the first `&` when starting a new query string. Encode each parameter value once.
 
 Clicking a preview requests its mapped scene when OBS is connected. The Live indicator changes after OBS confirms the switch.
 
@@ -262,7 +262,7 @@ https://yoursite.com/?OTB=your-video-url&Chat=your-chat-url&obs=your-vdo-ninja-o
 
 ### Featured chat on the board feed
 
-Commentators see highlighted Social Stream messages over the board feed for 10 seconds. The overlay does not intercept board drawing or clicks and is not loaded in viewer mode. The chat panel displays "Click Message To Highlight" above the chat.
+Commentators see compact highlighted Social Stream messages over the board feed. Reading time is 250 ms per word (four words per second), with a one-second minimum and a short entrance-animation allowance. A read-only connection to the Social Stream featured-message channel supplies the word count; if that connection is unavailable, the popup uses a two-second fallback. The overlay does not intercept board drawing or clicks and is not loaded in viewer mode. The chat panel displays "Click Message To Highlight" above the chat.
 
 The featured overlay uses the session in a Social Stream `Chat` URL, or defaults to `zyab4FcJGh`. Set `chatSession=YOUR_SESSION` in the commentator URL to override both the featured overlay and a Social Stream sidebar chat. This setting is preserved in generated commentator links; other chat providers are unchanged. Full simultaneous-stream session management is deferred.
 
@@ -273,3 +273,19 @@ AI views use BadukCast element parameters: board (`board`), winrate (`e=b,w,bar`
 ### Toolbar shortcuts and colors
 
 Hover or focus a tool to see its name and shortcut. Use 1/2/3 for black/white/alternating stones, 4 for drawing, 5/6/7/8 for triangle/circle/square/letter marks, S for grid, C for coordinates, and K for the color picker. Q switches the alternating stone color. The color picker affects new drawings, marks, triangle stone markers, and shared cursors; existing annotations keep their original colors. Toolbar icons are inline SVGs and do not require an external icon font.
+
+### Load a tournament with a commentary code
+
+In Session Setup, enter your eight-character commentary code and click
+**Load tournament**. OverlayTool fetches the tournament from BadukCast and
+fills its network room, OBS controller and chat links. Select the game to fill
+its camera feed and AI context; a single game is selected automatically.
+Then generate host links as usual. The commentary code is never included in
+shared links or stored in the browser.
+
+Under **Server settings**, change the BadukCast server for a local or alternate
+Orcha instance (for example `http://localhost:8080`). That server needs the
+`/api/v1/bootstrap` endpoint. It is also used for generated AI panel links.
+Tenjin supplies controller/chat links through tournament `overlaySettings`;
+missing links can be entered manually. Loading a code does not start a stream
+or activate a game.

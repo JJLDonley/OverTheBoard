@@ -23,6 +23,19 @@
         <div class="landing-grid">
           <section class="landing-panel">
             <h2>Session Details</h2>
+            <form id="tournamentCodeForm" class="landing-fields">
+              <label for="CommentaryCode">Commentary code</label>
+              <input id="CommentaryCode" type="password" maxlength="32" autocomplete="off" placeholder="Enter your tournament code">
+              <button id="loadTournament" type="submit">Load tournament</button>
+              <p id="tournamentLoadStatus" role="status" aria-live="polite"></p>
+              <label for="TournamentGame">Tournament game</label>
+              <select id="TournamentGame" disabled><option value="">Load a tournament first</option></select>
+              <details>
+                <summary>Server settings</summary>
+                <label for="BadukCastServer">Badukcast server</label>
+                <input id="BadukCastServer" type="url" value="https://stream-ai.baduk.club" placeholder="https://stream-ai.baduk.club">
+              </details>
+            </form>
             <div class="landing-fields">
               <label for="VideoURL">OTB (Over-The-Board) Feed</label>
               <input
@@ -44,6 +57,9 @@
                 id="ObsVdoUrl"
                 placeholder="OBS VDO Ninja link (obs parameter)"
               >
+
+              <label for="TimerUrl">Timer (Orcha control link)</label>
+              <input type="url" id="TimerUrl" placeholder="Control link from Orcha /timer/setup">
 
               <label for="ChatUrl">Chat (Embed URL)</label>
               <input
@@ -120,6 +136,7 @@
               >Disconnected</span>
             </div>
             <div class="obs-scenes">
+              <button id="openTimer" class="obs-btn" type="button" aria-haspopup="dialog">Timer</button>
               <button id="openScenes" class="obs-btn" type="button" aria-haspopup="dialog">Scenes</button>
               <div class="stream-controls">
                 <button id="obsStreamToggle" class="obs-btn" disabled>
@@ -239,6 +256,12 @@
       <div class="footer">
         <p>This website was designed and developed by TangJieHao.</p>
       </div>
+
+      <dialog id="timerModal" class="scene-modal" aria-labelledby="timerModalTitle">
+        <header class="ai-modal-header"><h2 id="timerModalTitle">Break timer</h2><button id="closeTimer" type="button" aria-label="Close timer">×</button></header>
+        <p id="timerStatus" role="status"></p>
+        <iframe id="timerControls" title="Orcha timer controls" referrerpolicy="no-referrer" hidden></iframe>
+      </dialog>
 
       <dialog id="sceneModal" class="scene-modal" aria-labelledby="sceneModalTitle">
         <header class="ai-modal-header"><h2 id="sceneModalTitle">Scenes</h2><button id="closeScenes" type="button" aria-label="Close scenes">×</button></header>

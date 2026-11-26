@@ -1,6 +1,6 @@
 const SCENE_KEYS = ['Main', 'Intro', 'Hosts', 'Interview'];
 const DEFAULTS = [
-    { label: 'Main stream', path: '/stream-overlay/{pc}', scene: 'Main stream', enabled: true },
+    { label: 'Main', path: '/stream-overlay/{pc}', scene: 'Main', enabled: true },
     { label: 'Intro', path: '/intro/{pc}', scene: 'Intro', enabled: true },
     { label: 'Hosts', path: '/hosts/{pc}', scene: 'Hosts', enabled: true },
     { label: 'Interview', path: '/interview/{pc}', scene: 'Interview', enabled: true },

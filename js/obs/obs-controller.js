@@ -77,8 +77,13 @@ export class OBSController {
         debug.log('📊 Using data:', data);
 
         // Extract connection status
-        this.isConnected = typeof data.connected === "boolean"
-            ? data.connected : !!(data.scenes || data.currentScene);
+        // VDO sends partial visibility/status events and empty details after
+        // the scene list. Those are not OBS disconnect notifications.
+        if (typeof data.connected === "boolean") {
+            this.isConnected = data.connected;
+        } else if (data.scenes || data.currentScene) {
+            this.isConnected = true;
+        }
 
         // Extract scenes
         if (data.scenes && Array.isArray(data.scenes)) {

@@ -76,17 +76,59 @@ export class IframeManager {
                 clearTimeout(this.featuredChatTimer);
                 frame.style.visibility = 'visible';
                 button.hidden = false;
-                // Social Stream does not send a resize notification on showtime expiry.
-                this.featuredChatTimer = setTimeout(this.hideFeaturedChat, 10000);
+                // Allow the entrance animation to finish before counting reading time.
+                this.featuredChatTimer = setTimeout(this.hideFeaturedChat, (this.featuredChatDuration || 2000) + 500);
             }
         });
         this.hideFeaturedChat();
+    }
+
+    watchFeaturedMessages(session) {
+        if (this.featuredSession === session) return;
+        this.featuredSession = session;
+        clearTimeout(this.featuredReconnectTimer);
+        if (this.featuredSocket) {
+            this.featuredSocket.onclose = null;
+            this.featuredSocket.close();
+            this.featuredSocket = null;
+        }
+        this.featuredChatDuration = 2000;
+        if (!session) return;
+        const connect = () => {
+            if (this.featuredSession !== session) return;
+            const socket = new WebSocket('wss://io.socialstream.ninja/api');
+            this.featuredSocket = socket;
+            socket.onopen = () => socket.send(JSON.stringify({ join: session, out: 3, in: 2 }));
+            socket.onmessage = event => {
+                if (this.featuredSocket !== socket) return;
+                let message;
+                try { message = JSON.parse(event.data); } catch { return; }
+                if (message && typeof message === 'object' && 'overlayNinja' in message) message = message.overlayNinja;
+                if (message === false) { this.hideFeaturedChat(); return; }
+                if (!message || typeof message.chatmessage !== 'string' || message.target && message.target !== 'null') return;
+                // Parse markup in an inert document; only text contributes to reading time.
+                const text = new DOMParser().parseFromString(message.chatmessage, 'text/html').body.textContent || '';
+                const words = text.trim().split(/\s+/u).filter(Boolean).length;
+                this.featuredChatDuration = Math.max(1000, words * 250);
+                const frame = document.getElementById('featuredChat');
+                if (frame.style.visibility === 'visible') {
+                    clearTimeout(this.featuredChatTimer);
+                    this.featuredChatTimer = setTimeout(this.hideFeaturedChat, this.featuredChatDuration + 500);
+                }
+            };
+            socket.onerror = () => socket.close();
+            socket.onclose = () => {
+                if (this.featuredSession === session) this.featuredReconnectTimer = setTimeout(connect, 2000);
+            };
+        };
+        connect();
     }
 
     updateFeaturedChat() {
         const frame = document.getElementById('featuredChat');
         if (!frame) return;
         if (window.appMode !== 'commentator') {
+            this.watchFeaturedMessages(null);
             this.hideFeaturedChat?.();
             frame.hidden = true;
             frame.removeAttribute('src');
@@ -109,8 +151,9 @@ export class IframeManager {
         } catch {
             // A custom or empty chat URL does not change the featured default.
         }
+        this.watchFeaturedMessages(session);
         const url = 'https://socialstream.ninja/featured.html?session=' +
-            encodeURIComponent(session) + '&showtime=10000&server&server2&server3';
+            encodeURIComponent(session) + '&showtime=0&scale=0.6&server&server2&server3';
         if (frame.getAttribute('src') !== url) {
             this.hideFeaturedChat?.();
             frame.src = url;
