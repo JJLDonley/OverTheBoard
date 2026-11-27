@@ -6,6 +6,9 @@ export class OBSController {
         this.currentScene = '';
         this.isStreaming = false;
         this.isConnected = false;
+        this.connectionUUID = null;
+        // OBS browser-source page permission (4 switches scenes, 5 starts/stops).
+        this.controlLevel = null;
 
         // Initialize DOM elements after a delay to avoid race condition
         this.initializeElements();
@@ -53,54 +56,90 @@ export class OBSController {
             if (!this.obsIframe || e.source !== this.obsIframe.contentWindow) {
                 return;
             }
+            const message = e.data;
+            if (!message || typeof message !== 'object') return;
 
-            debug.log('📨 Message from VDO Ninja:', e.data);
+            debug.log('📨 Message from VDO Ninja:', message);
 
-            // Handle obs-state messages
-            if (e.data && e.data.action === 'obs-state' && e.data.value) {
-                this.handleOBSState(e.data.value);
+            // VDO.Ninja posts { action, value, UUID }: the sender's UUID is on
+            // the message itself, not inside the value.
+            if (message.action === 'obs-state' && message.value) {
+                this.handleOBSState(message.value, message.UUID);
+            } else if (message.action === 'tally' && message.value) {
+                this.handleTally(message.value, message.UUID);
             }
         });
     }
 
-    handleOBSState(obsData) {
+    /** VDO.Ninja reports a remote OBS going away through its tally event. */
+    handleTally(tally, uuid) {
+        if (tally.source !== 'remote' || tally.connected !== false) return;
+        const from = uuid || tally.UUID || null;
+        if (this.connectionUUID && from && from !== this.connectionUUID) return;
+        this.isConnected = false;
+        this.isStreaming = false;
+        this.connectionUUID = null;
+        this.updateUI();
+    }
+
+    /**
+     * One OBS status message as VDO.Ninja sends it:
+     *   { visibility, sourceActive, streaming, recording, virtualcam,
+     *     details: { controlLevel, scenes: [...], currentScene: { name } } }
+     * Messages are often partial (only `streaming`, only `visibility`, or empty
+     * `details`), so every field is optional and absent fields keep their value.
+     */
+    handleOBSState(obsData, uuid = null) {
         debug.log('🎯 Processing OBS state:', obsData);
 
-        // Store the UUID for sending messages back
-        if (obsData.UUID) {
-            this.connectionUUID = obsData.UUID;
+        const details = obsData.details && typeof obsData.details === 'object'
+            ? obsData.details
+            : {};
+        // Scene data lives in `details`; streaming lives beside it.
+        const field = (key) => details[key] !== undefined ? details[key] : obsData[key];
+        const scenes = field('scenes');
+        const currentScene = field('currentScene');
+        const reportsScenes = Array.isArray(scenes) || !!currentScene;
+
+        // Remember who to address commands to. Prefer the OBS that reports
+        // scenes: other peers in the room can send visibility-only updates.
+        const from = uuid || obsData.UUID || null;
+        if (from && (reportsScenes || !this.connectionUUID)) {
+            this.connectionUUID = from;
             debug.log('💾 Stored connection UUID:', this.connectionUUID);
         }
 
-        // Check if data is in details
-        let data = obsData.details || obsData;
-        debug.log('📊 Using data:', data);
-
-        // Extract connection status
-        // VDO sends partial visibility/status events and empty details after
-        // the scene list. Those are not OBS disconnect notifications.
-        if (typeof data.connected === "boolean") {
-            this.isConnected = data.connected;
-        } else if (data.scenes || data.currentScene) {
+        const connected = field('connected');
+        if (typeof connected === 'boolean') {
+            this.isConnected = connected;
+        } else if (reportsScenes) {
             this.isConnected = true;
         }
 
-        // Extract scenes
-        if (data.scenes && Array.isArray(data.scenes)) {
-            this.scenes = data.scenes;
+        const controlLevel = Number(field('controlLevel'));
+        if (Number.isFinite(controlLevel)) this.controlLevel = controlLevel;
+
+        if (Array.isArray(scenes)) {
+            this.scenes = scenes
+                .map((scene) => typeof scene === 'object' && scene ? scene.name : scene)
+                .filter(Boolean);
             debug.log('🎬 Found scenes:', this.scenes);
         }
 
-        // Extract current scene
-        if (data.currentScene) {
+        if (currentScene) {
             // Handle both string and object formats
-            this.currentScene = typeof data.currentScene === 'object' ? data.currentScene.name : data.currentScene;
+            this.currentScene = typeof currentScene === 'object' ? currentScene.name : currentScene;
             debug.log('🎯 Current scene:', this.currentScene);
         }
 
-        // Extract streaming status
-        if (data.streaming !== undefined) {
-            this.isStreaming = data.streaming;
+        // `streaming` is a top-level flag; older relays nested it in details.
+        const streaming = typeof obsData.streaming === 'boolean'
+            ? obsData.streaming
+            : typeof details.streaming === 'boolean'
+            ? details.streaming
+            : details.status?.streaming;
+        if (typeof streaming === 'boolean') {
+            this.isStreaming = streaming;
             debug.log('📡 Streaming:', this.isStreaming);
         }
 

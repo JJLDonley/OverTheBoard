@@ -106,13 +106,38 @@ try {
 
   // Clicking sends the relay command for that scene name; Live waits for OBS confirmation.
   const relay = await (await page.locator("#obs").elementHandle()).contentFrame();
+  // The relay speaks VDO.Ninja's real message shape: { action, value, UUID }
+  // with the sender's UUID on the message, scene data in value.details
+  // (currentScene is an object) and `streaming` beside details. A lost OBS is
+  // reported by a `tally` event, not by a flag inside details.
   const state = async (currentScene, connected = true) => {
-    await relay.evaluate(({ currentScene, connected }) => parent.postMessage({
-      action: "obs-state", value: { UUID: "fake-obs", details: { connected, currentScene } },
-    }, "*"), { currentScene, connected });
+    await relay.evaluate(({ currentScene, connected, scenes }) => parent.postMessage(connected
+      ? {
+        action: "obs-state", UUID: "fake-obs",
+        value: { visibility: true, sourceActive: true, details: { controlLevel: 5, scenes, currentScene: { name: currentScene, width: 1920, height: 1080 } } },
+      }
+      : { action: "tally", UUID: "fake-obs", value: { source: "remote", UUID: "fake-obs", connected: false, obsState: {} } },
+    "*"), { currentScene, connected, scenes: names });
     await page.waitForFunction((connected) => window.obsController.isConnected === connected, connected);
   };
   await state("Unlisted scene");
+  check(await page.evaluate(() => window.obsController.connectionUUID) === "fake-obs", "sender UUID read from the message");
+  check(await page.evaluate(() => window.obsController.controlLevel) === 5, "OBS page permission level read");
+
+  // A host who joins while OBS is already live gets `streaming` beside
+  // `details`; the button must offer Stop, and Start again once it ends.
+  const toggle = page.locator("#obsStreamToggle");
+  check(await toggle.textContent() === "Start Stream" && await toggle.isEnabled(), "Start Stream offered when idle");
+  await relay.evaluate(() => parent.postMessage({
+    action: "obs-state", UUID: "fake-obs",
+    value: { streaming: true, details: { controlLevel: 5, currentScene: { name: "Unlisted scene" } } },
+  }, "*"));
+  await page.waitForFunction(() => document.getElementById("obsStreamToggle").textContent === "Stop Stream");
+  await page.evaluate(() => document.getElementById("obsStreamToggle").click());
+  await relay.waitForFunction(() => commands.some((command) => command.obsCommand.action === "stopStreaming"));
+  check(await relay.evaluate(() => commands.find((command) => command.obsCommand.action === "stopStreaming").UUID) === "fake-obs", "stop addressed to the OBS that reported");
+  await relay.evaluate(() => { parent.postMessage({ action: "obs-state", UUID: "fake-obs", value: { streaming: false } }, "*"); commands.length = 0; });
+  await page.waitForFunction(() => document.getElementById("obsStreamToggle").textContent === "Start Stream");
   for (const [index, name] of names.entries()) {
     await page.locator(".scene-preview-card").nth(index).click();
     await relay.waitForFunction((count) => commands.length === count, index + 1);
