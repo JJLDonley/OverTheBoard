@@ -115,7 +115,17 @@ try {
   check(/left: 960px; top: 0px; width: 960px; height: 540px/.test(await sponsor.evaluate((f) => f.style.cssText)), "custom source geometry");
 
   // Clicking sends the relay command for that scene name; Live waits for OBS confirmation.
-  const relay = await (await page.locator("#obs").elementHandle()).contentFrame();
+  // The OBS frame is attached asynchronously; wait until it has a document.
+  const obsFrame = async () => {
+    for (let attempt = 0; attempt < 300; attempt++) {
+      const frame = await (await page.locator("#obs").elementHandle()).contentFrame();
+      if (frame && await frame.evaluate(() => Array.isArray(window.commands)).catch(() => false)) return frame;
+      await page.waitForTimeout(100);
+    }
+    const frame = await (await page.locator("#obs").elementHandle()).contentFrame();
+    throw Error(`OBS relay frame did not load: src=${await page.locator("#obs").getAttribute("src")} frameUrl=${frame?.url()} page=${page.url().slice(0, 160)}`);
+  };
+  const relay = await obsFrame();
   // The relay speaks VDO.Ninja's real message shape: { action, value, UUID }
   // with the sender's UUID on the message, scene data in value.details
   // (currentScene is an object) and `streaming` beside details. A lost OBS is
@@ -206,7 +216,7 @@ try {
   check(await page.locator(".scene-preview-card").count() === 6 && templateRequests === requestsBefore, "no origin uses defaults");
   await page.keyboard.press("Escape");
   // Without a Badukcast server the button still drives OBS directly.
-  const plainRelay = await (await page.locator("#obs").elementHandle()).contentFrame();
+  const plainRelay = await obsFrame();
   await plainRelay.evaluate(() => parent.postMessage({ action: "obs-state", UUID: "plain-obs", value: { details: { controlLevel: 5, scenes: ["Main"], currentScene: { name: "Main" } } } }, "*"));
   await page.waitForFunction(() => !document.getElementById("obsStreamToggle").disabled);
   const callsBefore = streamCalls.length;

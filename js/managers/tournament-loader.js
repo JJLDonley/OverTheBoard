@@ -187,6 +187,8 @@ export class TournamentLoader {
             try { if (label) localStorage.setItem('userLabel', label); } catch { /* Optional. */ }
             this.status.textContent = '';
             await window.enterCommentatorMode?.({ label });
+            // The stream can be started through Badukcast before OBS connects.
+            window.obsController?.updateUI?.();
             window.scenePicker?.load();
             this.follow();
         } catch (error) {

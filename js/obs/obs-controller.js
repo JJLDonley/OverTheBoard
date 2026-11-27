@@ -156,6 +156,9 @@ export class OBSController {
                 this.toggleStreaming();
             });
         }
+        // A commentator link that names a Badukcast server can start the
+        // stream straight away, before OBS has connected back.
+        this.updateUI();
     }
 
     updateUI() {

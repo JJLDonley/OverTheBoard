@@ -142,6 +142,7 @@ try {
   check(seatCalls.length >= 1 && seatCalls[0].pc === "3" && seatCalls[0].name === "Commentator One" && !seatCalls[0].release, `seat claimed on join: ${JSON.stringify(seatCalls[0])}`);
   check(/^[A-Za-z0-9-]{8,64}$/.test(seatCalls[0].session || ""), "seat claim carries a tab session id");
   check(new URL(page.url()).searchParams.get("host") === "1", "joined as Host 1");
+  check(await page.locator("#obsStreamToggle").isEnabled() && await page.locator("#obsStreamToggle").textContent() === "Start Stream", "Start Stream available after joining, before OBS connects");
 
   // Both seats taken: a third commentator is told who holds them and stays out.
   seatsFull = true;
