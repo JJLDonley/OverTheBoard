@@ -142,6 +142,11 @@ try {
   check(seatCalls.length >= 1 && seatCalls[0].pc === "3" && seatCalls[0].name === "Commentator One" && !seatCalls[0].release, `seat claimed on join: ${JSON.stringify(seatCalls[0])}`);
   check(/^[A-Za-z0-9-]{8,64}$/.test(seatCalls[0].session || ""), "seat claim carries a tab session id");
   check(new URL(page.url()).searchParams.get("host") === "1", "joined as Host 1");
+  // The seat and the commentator's name become their identity in OBS.
+  const hostOneObs = await page.locator("#obs").getAttribute("src") || "";
+  check(/[?&]push=host1(&|$)/.test(hostOneObs), `Host 1 publishes to OBS as host1: ${hostOneObs}`);
+  check(/[?&]label=Commentator(%20|\+)One(&|$)/.test(hostOneObs), `commentator name is the OBS label: ${hostOneObs}`);
+  check(hostOneObs.startsWith("https://vdo.ninja/?room=control&push=host1"), "bare VDO.Ninja flags are left untouched");
   check(await page.locator("#obsStreamToggle").isEnabled() && await page.locator("#obsStreamToggle").textContent() === "Start Stream", "Start Stream available after joining, before OBS connects");
 
   // Both seats taken: a third commentator is told who holds them and stays out.
@@ -159,6 +164,11 @@ try {
   await page.locator("#loadTournament").click();
   await page.waitForFunction(() => window.appMode === "commentator");
   check(new URL(page.url()).searchParams.get("host") === "2", "joined as Host 2 once a seat is free");
+  // The label is applied a moment after the commentator view opens.
+  await page.waitForFunction(() => /[?&]label=Third(&|$)/.test(document.getElementById("obs").getAttribute("src") || ""), null, { timeout: 10000 }).catch(() => {});
+  const hostTwoObs = await page.locator("#obs").getAttribute("src") || "";
+  check(/[?&]push=host2(&|$)/.test(hostTwoObs), `Host 2 publishes to OBS as host2: ${hostTwoObs}`);
+  check(/[?&]label=Third(&|$)/.test(hostTwoObs), `name from the link is the OBS label: ${hostTwoObs}`);
   nextSeat = 1;
   await page.goto("about:blank");
 

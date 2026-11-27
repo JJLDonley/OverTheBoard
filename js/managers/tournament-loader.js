@@ -12,6 +12,17 @@ const ERRORS = {
     503: 'Badukcast is unavailable. Try again shortly.',
 };
 
+/**
+ * Gives a VDO.Ninja OBS link the seat's stream ID (push=host1 / host2).
+ * Edited as text: VDO.Ninja reads bare flags such as "&controlobs", and
+ * rebuilding the query would turn them into "controlobs=", which it ignores.
+ */
+export function hostObsLink(link, seat) {
+    if (!link || !/^https?:\/\/([a-z0-9-]+\.)*vdo\.ninja\//i.test(link)) return link;
+    const cleaned = link.replace(/([?&])push(?:=[^&#]*)?(&|(?=#)|$)/gi, (_, lead, tail) => tail === '&' ? lead : '');
+    return `${cleaned}${cleaned.includes('?') ? '&' : '?'}push=host${seat}`;
+}
+
 export class TournamentLoader {
     constructor() {
         this.form = document.getElementById('tournamentCodeForm');
@@ -179,6 +190,9 @@ export class TournamentLoader {
             if (seat) {
                 window.hostIndex = seat;
                 this.holdHostSeat(server.origin, key, name);
+                // Host 1 publishes to OBS as "host1", Host 2 as "host2", so
+                // scenes can place each host; their name is added as the label.
+                this.fill('ObsVdoUrl', hostObsLink(settings.obsVdoUrl || '', seat));
             }
             this.renderGames();
             const game = this.currentGame();
