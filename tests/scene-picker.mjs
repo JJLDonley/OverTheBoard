@@ -47,10 +47,20 @@ try {
   const base = `http://127.0.0.1:${server.addr.port}/`;
   let templateUp = true;
   let templateRequests = 0;
-  const cors = { "Access-Control-Allow-Origin": "*" };
+  const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "X-BadukCast-Key", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
+  const streamCalls = [];
+  let dialogs = 0;
+  page.on("dialog", (dialog) => { dialogs++; dialog.accept(); });
   await page.route("**/*", (route) => {
     const url = new URL(route.request().url());
     if (url.origin === ORCHA) {
+      // Badukcast's commentator stream API: start/stop are done by the server.
+      const stream = /^\/stream\/PC(\d+)\/(start|stop)$/.exec(url.pathname);
+      if (stream) {
+        if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+        streamCalls.push({ pc: stream[1], action: stream[2], key: route.request().headers()["x-badukcast-key"], method: route.request().method() });
+        return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ pc: Number(stream[1]), running: stream[2] === "start", phase: stream[2] === "start" ? "ingesting" : "stopped", error: null }) });
+      }
       if (url.pathname === "/broadcaster/api/template") {
         templateRequests++;
         if (!templateUp) return route.fulfill({ status: 500, headers: cors, body: "down" });
@@ -133,9 +143,18 @@ try {
     value: { streaming: true, details: { controlLevel: 5, currentScene: { name: "Unlisted scene" } } },
   }, "*"));
   await page.waitForFunction(() => document.getElementById("obsStreamToggle").textContent === "Stop Stream");
+  // With a Badukcast server, Stop and Start go to the server with the
+  // commentary key: only it can end the YouTube broadcast or create a new one.
+  await page.evaluate(() => { window.tournamentAccessKey = "StateGoOpen2026"; });
   await page.evaluate(() => document.getElementById("obsStreamToggle").click());
-  await relay.waitForFunction(() => commands.some((command) => command.obsCommand.action === "stopStreaming"));
-  check(await relay.evaluate(() => commands.find((command) => command.obsCommand.action === "stopStreaming").UUID) === "fake-obs", "stop addressed to the OBS that reported");
+  await page.waitForFunction(() => document.getElementById("obsStreamToggle").textContent === "Start Stream");
+  check(JSON.stringify(streamCalls) === JSON.stringify([{ pc: "5", action: "stop", key: "StateGoOpen2026", method: "POST" }]), `stop sent to the server: ${JSON.stringify(streamCalls)}`);
+  check(dialogs === 1, "stop asks for confirmation");
+  check(await relay.evaluate(() => commands.filter((command) => /Streaming$/.test(command.obsCommand.action)).length) === 0, "OBS is not told to stop behind the server's back");
+  await relay.evaluate(() => parent.postMessage({ action: "obs-state", UUID: "fake-obs", value: { streaming: false } }, "*"));
+  await page.evaluate(() => document.getElementById("obsStreamToggle").click());
+  await page.waitForFunction(() => document.getElementById("obsStreamToggle").textContent === "Stop Stream");
+  check(streamCalls.length === 2 && streamCalls[1].action === "start" && streamCalls[1].pc === "5", "start sent to the server for this mini-PC");
   await relay.evaluate(() => { parent.postMessage({ action: "obs-state", UUID: "fake-obs", value: { streaming: false } }, "*"); commands.length = 0; });
   await page.waitForFunction(() => document.getElementById("obsStreamToggle").textContent === "Start Stream");
   for (const [index, name] of names.entries()) {
@@ -186,6 +205,15 @@ try {
   await page.waitForFunction(() => document.getElementById("scenePickerStatus").textContent.includes("Using default scenes"));
   check(await page.locator(".scene-preview-card").count() === 6 && templateRequests === requestsBefore, "no origin uses defaults");
   await page.keyboard.press("Escape");
+  // Without a Badukcast server the button still drives OBS directly.
+  const plainRelay = await (await page.locator("#obs").elementHandle()).contentFrame();
+  await plainRelay.evaluate(() => parent.postMessage({ action: "obs-state", UUID: "plain-obs", value: { details: { controlLevel: 5, scenes: ["Main"], currentScene: { name: "Main" } } } }, "*"));
+  await page.waitForFunction(() => !document.getElementById("obsStreamToggle").disabled);
+  const callsBefore = streamCalls.length;
+  await page.evaluate(() => document.getElementById("obsStreamToggle").click());
+  await plainRelay.waitForFunction(() => commands.some((command) => command.obsCommand.action === "startStreaming"));
+  check(await plainRelay.evaluate(() => commands.find((command) => command.obsCommand.action === "startStreaming").UUID) === "plain-obs", "direct start addressed to the OBS that reported");
+  check(streamCalls.length === callsBefore, "no server call without a Badukcast server");
 
   // Shared links keep the mini-PC ID but no longer carry per-scene settings.
   await page.goto(`${base}?aiOrigin=${encodeURIComponent(ORCHA)}`);

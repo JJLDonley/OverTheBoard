@@ -29,6 +29,9 @@ try {
   let status = 200;
   let requests = 0;
   let networkRoom = "san-diego-room";
+  const seatCalls = [];
+  let seatsFull = false;
+  let nextSeat = 1;
   const games = [
     { id: "one", name: "Board 1", blackPlayer: "Alice", whitePlayer: "Bob", roundNumber: 1, boardNumber: 1, status: "finished", vdoUrl: "https://vdo.ninja/?view=one", analysisContext: { type: "game", id: "1111" } },
     { id: "two", name: "Board 2", blackPlayer: "Cara", whitePlayer: "Dan", roundNumber: 2, boardNumber: 1, status: "active", vdoUrl: "https://vdo.ninja/?view=two", analysisContext: { type: "game", id: "2222" } },
@@ -37,8 +40,18 @@ try {
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin === ORCHA) {
-      const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "X-BadukCast-Key" };
+      const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "X-BadukCast-Key, Content-Type", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
       if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      // Host seats: Badukcast hands out Host 1 / Host 2 and refuses a third.
+      const host = /^\/stream\/PC(\d+)\/host(\/release)?$/.exec(url.pathname);
+      if (host) {
+        const body = JSON.parse(request.postData() || "{}");
+        seatCalls.push({ pc: host[1], release: !!host[2], name: body.name, session: body.session, key: request.headers()["x-badukcast-key"] });
+        if (host[2]) return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ hosts: [] }) });
+        return seatsFull
+          ? route.fulfill({ status: 409, headers: cors, contentType: "application/json", body: JSON.stringify({ error: "hosts_full", hosts: [{ seat: 1, name: "Devin" }, { seat: 2, name: "Jae" }] }) })
+          : route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ pc: Number(host[1]), seat: nextSeat, hosts: [{ seat: nextSeat, name: body.name }] }) });
+      }
       if (url.pathname === "/api/v1/bootstrap") {
         requests++;
         // Badukcast ignores letter case; the key is sent as typed, in a header only.
@@ -124,6 +137,29 @@ try {
 
   // Name prompt is skipped because the name was given on the join form.
   check(!(await page.locator("dialog[open]").count()), "no extra dialogs after joining");
+
+  // The first join above took a host seat from Badukcast.
+  check(seatCalls.length >= 1 && seatCalls[0].pc === "3" && seatCalls[0].name === "Commentator One" && !seatCalls[0].release, `seat claimed on join: ${JSON.stringify(seatCalls[0])}`);
+  check(/^[A-Za-z0-9-]{8,64}$/.test(seatCalls[0].session || ""), "seat claim carries a tab session id");
+  check(new URL(page.url()).searchParams.get("host") === "1", "joined as Host 1");
+
+  // Both seats taken: a third commentator is told who holds them and stays out.
+  seatsFull = true;
+  await page.goto("about:blank");
+  await page.goto(`${base}?key=StateGoOpen2026&name=Third&server=${encodeURIComponent(ORCHA)}`);
+  await page.waitForFunction(() => document.getElementById("tournamentLoadStatus")?.textContent.includes("Both host seats are taken"));
+  check((await page.locator("#tournamentLoadStatus").textContent()).includes("Devin and Jae"), "names who holds the seats");
+  check(await page.evaluate(() => window.appMode) === "landing" && await page.locator("#landing").isVisible(), "refused commentator stays on the start page");
+  check(await page.locator("#CommentaryCode").inputValue() === "StateGoOpen2026", "key kept in the form to retry");
+  check(!(await page.evaluate(() => window.tournamentAccessKey)), "refused commentator holds no key");
+  // A seat frees up: pressing Join again gets in, as Host 2.
+  seatsFull = false;
+  nextSeat = 2;
+  await page.locator("#loadTournament").click();
+  await page.waitForFunction(() => window.appMode === "commentator");
+  check(new URL(page.url()).searchParams.get("host") === "2", "joined as Host 2 once a seat is free");
+  nextSeat = 1;
+  await page.goto("about:blank");
 
   // Organiser's join link: ?key=…&name=… The key is stripped from the address
   // bar at once and everything else is loaded from Badukcast.

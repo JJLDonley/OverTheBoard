@@ -67,6 +67,61 @@ export class TournamentLoader {
         }
     }
 
+    /** Identifies this browser tab's seat; survives a reload of the tab. */
+    get hostSession() {
+        let id = '';
+        try { id = sessionStorage.getItem('hostSession') || ''; } catch { /* Fresh ID below. */ }
+        if (!id) {
+            id = crypto.randomUUID();
+            try { sessionStorage.setItem('hostSession', id); } catch { /* This page only. */ }
+        }
+        return id;
+    }
+
+    hostRequest(origin, key, path, body, keepalive = false) {
+        const pc = window.scenePicker?.appliedPc;
+        if (!pc) return null;
+        return fetch(`${origin}/stream/PC${encodeURIComponent(pc)}/${path}`, {
+            method: 'POST',
+            headers: { 'X-BadukCast-Key': key, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session: this.hostSession, ...body }),
+            credentials: 'omit',
+            cache: 'no-store',
+            keepalive,
+            ...(keepalive ? {} : { signal: AbortSignal.timeout(8000) }),
+        });
+    }
+
+    /**
+     * Takes Host 1 or Host 2 for this commentator. Badukcast refuses a third
+     * commentator while both seats are held. A server without seats, or one
+     * that cannot be reached, lets the commentator in without a seat number.
+     */
+    async claimHostSeat(origin, key, name) {
+        let response;
+        try { response = await this.hostRequest(origin, key, 'host', { name }); } catch { return null; }
+        if (!response) return null;
+        if (response.status === 409) {
+            const body = await response.json().catch(() => ({}));
+            const names = (body.hosts || []).map(host => host.name || `Host ${host.seat}`).join(' and ');
+            throw Error(`Both host seats are taken${names ? ` (${names})` : ''}. Ask one of them to leave, or try again in a minute.`);
+        }
+        if (!response.ok) return null;
+        const seat = Number((await response.json().catch(() => ({}))).seat);
+        return Number.isInteger(seat) && seat > 0 ? seat : null;
+    }
+
+    /** Keeps the seat while this tab is open and gives it back on leaving. */
+    holdHostSeat(origin, key, name) {
+        clearInterval(this.seatTimer);
+        this.seatTimer = setInterval(() => { this.claimHostSeat(origin, key, name).catch(() => { /* Seat lost; keep commentating. */ }); }, 15000);
+        if (this.seatReleaseBound) return;
+        this.seatReleaseBound = true;
+        window.addEventListener('pagehide', () => {
+            try { this.hostRequest(origin, key, 'host/release', {}, true)?.catch(() => {}); } catch { /* Seat times out instead. */ }
+        });
+    }
+
     async fetchBootstrap(origin, key) {
         const response = await fetch(new URL('/api/v1/bootstrap', origin), {
             headers: { 'X-BadukCast-Key': key },
@@ -110,6 +165,21 @@ export class TournamentLoader {
             // previews and generated links must use that same PC.
             const roomPc = /^OverlayTool([1-9]\d*)$/i.exec(settings.networkRoom || '')?.[1];
             if (roomPc) window.scenePicker?.setPc(roomPc);
+            // Host 1 or Host 2, whichever is free; a third commentator stops here.
+            const name = this.name.value.trim();
+            let seat;
+            try {
+                seat = await this.claimHostSeat(server.origin, key, name);
+            } catch (error) {
+                // Not joined: keep the key in the form so "Join" can be retried.
+                this.code.value = key;
+                window.tournamentAccessKey = '';
+                throw error;
+            }
+            if (seat) {
+                window.hostIndex = seat;
+                this.holdHostSeat(server.origin, key, name);
+            }
             this.renderGames();
             const game = this.currentGame();
             this.fillGame(game);

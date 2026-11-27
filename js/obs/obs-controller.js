@@ -1,4 +1,5 @@
 import { debug } from '../utils/debugger.js';
+import { normalizeAccessKey } from '../utils/access-key.js';
 
 export class OBSController {
     constructor() {
@@ -7,6 +8,8 @@ export class OBSController {
         this.isStreaming = false;
         this.isConnected = false;
         this.connectionUUID = null;
+        this.streamBusy = false;
+        this.streamNote = '';
         // OBS browser-source page permission (4 switches scenes, 5 starts/stops).
         this.controlLevel = null;
 
@@ -179,8 +182,12 @@ export class OBSController {
 
         // Update stream button
         if (this.streamToggleBtn) {
-            this.streamToggleBtn.textContent = this.isStreaming ? 'Stop Stream' : 'Start Stream';
-            this.streamToggleBtn.disabled = !this.isConnected;
+            this.streamToggleBtn.textContent = this.streamBusy
+                ? 'Working…'
+                : this.isStreaming ? 'Stop Stream' : 'Start Stream';
+            // With a Badukcast server the stream can be started before OBS has
+            // connected back to this page; without one OBS must be connected.
+            this.streamToggleBtn.disabled = !!this.streamBusy || (!this.isConnected && !this.streamOrigin);
         }
 
         debug.log('✅ UI updated - Connected:', this.isConnected, 'Scenes:', this.scenes.length, 'Streaming:', this.isStreaming);
@@ -210,9 +217,77 @@ export class OBSController {
         return true;
     }
 
-    toggleStreaming() {
-        debug.log('🎬 Toggling stream - current state:', this.isStreaming);
+    /** Badukcast server that owns the stream, or '' when this session has none. */
+    get streamOrigin() {
+        try {
+            const url = new URL(window.tournamentAiOrigin || new URLSearchParams(location.search).get('aiOrigin') || '');
+            return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.origin : '';
+        } catch { return ''; }
+    }
 
+    /**
+     * Start/stop through Badukcast. OBS alone cannot create the YouTube
+     * broadcast or the Twitch destination, and stopping only OBS leaves the
+     * broadcast "live" with no video, so the tournament's server does both.
+     * Returns false when this session has no server or PC to ask.
+     */
+    async toggleStreamingViaServer(start) {
+        const origin = this.streamOrigin;
+        const pc = window.scenePicker?.appliedPc;
+        if (!origin || !pc) return false;
+        if (!window.tournamentAccessKey) {
+            const typed = normalizeAccessKey(window.prompt('Enter your commentary key to ' + (start ? 'start' : 'stop') + ' the stream.') || '');
+            if (!typed) { this.setStreamNote('A commentary key is needed to ' + (start ? 'start' : 'stop') + ' the stream.'); return true; }
+            window.tournamentAccessKey = typed;
+        }
+        const question = start
+            ? 'Go live now? The stream is public as soon as it starts.'
+            : 'Stop the stream? The YouTube broadcast ends and cannot be resumed.';
+        if (!window.confirm(question)) return true;
+        this.streamBusy = true;
+        this.setStreamNote(start ? 'Starting the stream…' : 'Stopping the stream…');
+        this.updateUI();
+        try {
+            const response = await fetch(`${origin}/stream/PC${encodeURIComponent(pc)}/${start ? 'start' : 'stop'}`, {
+                method: 'POST',
+                headers: { 'X-BadukCast-Key': window.tournamentAccessKey },
+                credentials: 'omit',
+                cache: 'no-store',
+                signal: AbortSignal.timeout(90000),
+            });
+            const body = await response.json().catch(() => ({}));
+            if (response.status === 401) window.tournamentAccessKey = '';
+            if (!response.ok || body.error) {
+                this.setStreamNote((start ? 'Could not start the stream: ' : 'Could not stop the stream: ') + (body.error || response.statusText || response.status));
+            } else {
+                // OBS confirms through its own status; this covers the gap.
+                this.isStreaming = !!body.running;
+                this.setStreamNote(start ? 'Stream started.' : 'Stream stopped.');
+            }
+        } catch (error) {
+            this.setStreamNote((start ? 'Could not start the stream: ' : 'Could not stop the stream: ') + (error.name === 'TimeoutError' ? 'no answer from the server.' : 'could not reach the server.'));
+        } finally {
+            this.streamBusy = false;
+            this.updateUI();
+        }
+        return true;
+    }
+
+    setStreamNote(text) {
+        this.streamNote = text;
+        if (this.streamToggleBtn) this.streamToggleBtn.title = text || '';
+        const status = document.getElementById('scenePickerStatus');
+        if (status && document.getElementById('sceneModal')?.open) status.textContent = text;
+        debug.log('🎬 Stream:', text);
+    }
+
+    async toggleStreaming() {
+        debug.log('🎬 Toggling stream - current state:', this.isStreaming);
+        if (this.streamBusy) return;
+
+        if (await this.toggleStreamingViaServer(!this.isStreaming)) return;
+
+        // No Badukcast server in this session: plain OBS output toggle.
         if (!this.obsIframe) {
             debug.log('❌ No OBS iframe found');
             return;
