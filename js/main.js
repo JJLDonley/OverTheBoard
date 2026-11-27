@@ -83,8 +83,8 @@ function buildBaseParams() {
     const chatSession = new URLSearchParams(window.location.search).get("chatSession");
     if (chatSession) params.set("chatSession", chatSession);
 
-    const timerUrl = document.getElementById("TimerUrl")?.value;
-    if (timerUrl && !window.isViewerMode) params.set("Timer", timerUrl);
+    const timerPc = document.getElementById("TimerPc")?.value;
+    if (timerPc && !window.isViewerMode) params.set("Timer", timerPc);
 
     const chatUrl = document.getElementById("ChatUrl")?.value;
     if (chatUrl) params.set("Chat", encodeURIComponent(chatUrl));
@@ -771,11 +771,93 @@ function generateViewerUrl() {
     return baseUrl.toString();
 }
 
+/** Joins the commentator network room and announces this commentator. */
+function startNetworkSession(networkManager) {
+    const params = new URLSearchParams(window.location.search);
+    let roomName = params.get("Network");
+    if (window.appMode !== "landing") {
+        if (roomName) {
+            roomName = decodeURIComponent(roomName);
+
+            if (window.isViewerMode) {
+                if (window.debugger) {
+                    window.debugger.enabled = true;
+                }
+                debug.log("NetworkManager initialized in Viewer Mode");
+                networkManager.initialize("VW", roomName);
+            } else {
+                debug.log("NetworkManager initialized in Commentator Mode");
+                networkManager.initialize("CO", roomName);
+            }
+        } else if (window.isViewerMode) {
+            debug.error("No Network Room provided for Viewer Mode");
+        } else {
+            debug.log(
+                "No Network Room provided - NetworkManager waiting for input",
+            );
+        }
+    }
+
+    if (window.appMode === "commentator" && window.networkManager) {
+        if (window.networkManager.getOwnerId) {
+            window.localOwnerId = window.networkManager.getOwnerId();
+        }
+        if (window.cursorLabel && window.networkManager.setLabel) {
+            window.networkManager.setLabel(
+                window.cursorLabel,
+                window.hostTag,
+            );
+        }
+    }
+
+    if (window.appMode === "commentator") {
+        window.currentViewerUrl = generateViewerUrl();
+
+        setTimeout(() => {
+            if (
+                window.obsController && window.obsController.requestStatus
+            ) {
+                window.obsController.requestStatus();
+            }
+        }, 2000);
+    }
+}
+
+/**
+ * Switches the landing page straight into the commentator view in place, so
+ * the commentary code stays in memory. Fields must already be filled in.
+ */
+async function enterCommentatorMode({ label } = {}) {
+    if (window.appMode === "commentator") {
+        updateShareableUrl();
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        loadConfigFromUrl();
+        return;
+    }
+    applyAppMode("commentator");
+    if (label && isValidName(label)) window.cursorLabel = label;
+    // New history entry: the commentator link becomes the page's URL, and Back
+    // returns to the start page (reloaded, since the code lives in memory only).
+    window.history.pushState({ commentator: true }, "", window.location.href);
+    window.addEventListener("popstate", () => window.location.reload(), { once: true });
+    updateShareableUrl();
+    // updateShareableUrl blocks URL reloading briefly; wait it out.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    loadConfigFromUrl();
+    window.iframeManager?.updateFeaturedChat();
+    await handleUserLabel();
+    startNetworkSession(window.networkManager);
+    updateSidePanelVisibility();
+    overlay?.updateCanvasDimensions?.();
+    drawingLayer?.updateCanvasDimensions?.();
+}
+
 function main() {
     window.updateShareableUrl = updateShareableUrl;
     window.loadConfigFromUrl = loadConfigFromUrl;
     window.updateSidePanelVisibility = updateSidePanelVisibility;
     window.generateViewerUrl = generateViewerUrl;
+    window.enterCommentatorMode = enterCommentatorMode;
     window.setupAiWidget = setupAiWidget;
 
     const initialMode = getAppModeFromUrl();
@@ -864,53 +946,7 @@ function main() {
         if (window.isViewerMode && !otbParam) {
             debug.error("No OTB provided for Viewer Mode");
         }
-        let roomName = params.get("Network");
-        if (window.appMode !== "landing") {
-            if (roomName) {
-                roomName = decodeURIComponent(roomName);
-
-                if (window.isViewerMode) {
-                    if (window.debugger) {
-                        window.debugger.enabled = true;
-                    }
-                    debug.log("NetworkManager initialized in Viewer Mode");
-                    networkManager.initialize("VW", roomName);
-                } else {
-                    debug.log("NetworkManager initialized in Commentator Mode");
-                    networkManager.initialize("CO", roomName);
-                }
-            } else if (window.isViewerMode) {
-                debug.error("No Network Room provided for Viewer Mode");
-            } else {
-                debug.log(
-                    "No Network Room provided - NetworkManager waiting for input",
-                );
-            }
-        }
-
-        if (window.appMode === "commentator" && window.networkManager) {
-            if (window.networkManager.getOwnerId) {
-                window.localOwnerId = window.networkManager.getOwnerId();
-            }
-            if (window.cursorLabel && window.networkManager.setLabel) {
-                window.networkManager.setLabel(
-                    window.cursorLabel,
-                    window.hostTag,
-                );
-            }
-        }
-
-        if (window.appMode === "commentator") {
-            window.currentViewerUrl = generateViewerUrl();
-
-            setTimeout(() => {
-                if (
-                    window.obsController && window.obsController.requestStatus
-                ) {
-                    window.obsController.requestStatus();
-                }
-            }, 2000);
-        }
+        startNetworkSession(networkManager);
 
         document.addEventListener("keydown", (e) => {
             if (!canUseBoardShortcut(e)) return;

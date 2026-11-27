@@ -20,22 +20,27 @@
           </p>
         </header>
 
+        <section class="landing-panel join-panel">
+          <h2>Commentating? Join with your code</h2>
+          <form id="tournamentCodeForm" class="landing-fields">
+            <label for="CommentaryCode">Commentary code</label>
+            <input id="CommentaryCode" type="password" maxlength="32" autocomplete="off" placeholder="8-character code from the organiser">
+            <label for="CommentatorName">Your name</label>
+            <input id="CommentatorName" maxlength="40" autocomplete="name" placeholder="Shown to other commentators">
+            <button id="loadTournament" type="submit">Join</button>
+            <p id="tournamentLoadStatus" role="status" aria-live="polite"></p>
+            <details>
+              <summary>Server settings</summary>
+              <label for="BadukCastServer">Badukcast server</label>
+              <input id="BadukCastServer" type="url" value="https://stream-ai.baduk.club" placeholder="https://stream-ai.baduk.club">
+            </details>
+          </form>
+          <p class="join-note">Organisers: use Session Setup below to create links by hand.</p>
+        </section>
+
         <div class="landing-grid">
           <section class="landing-panel">
             <h2>Session Details</h2>
-            <form id="tournamentCodeForm" class="landing-fields">
-              <label for="CommentaryCode">Commentary code</label>
-              <input id="CommentaryCode" type="password" maxlength="32" autocomplete="off" placeholder="Enter your tournament code">
-              <button id="loadTournament" type="submit">Load tournament</button>
-              <p id="tournamentLoadStatus" role="status" aria-live="polite"></p>
-              <label for="TournamentGame">Tournament game</label>
-              <select id="TournamentGame" disabled><option value="">Load a tournament first</option></select>
-              <details>
-                <summary>Server settings</summary>
-                <label for="BadukCastServer">Badukcast server</label>
-                <input id="BadukCastServer" type="url" value="https://stream-ai.baduk.club" placeholder="https://stream-ai.baduk.club">
-              </details>
-            </form>
             <div class="landing-fields">
               <label for="VideoURL">OTB (Over-The-Board) Feed</label>
               <input
@@ -58,8 +63,12 @@
                 placeholder="OBS VDO Ninja link (obs parameter)"
               >
 
-              <label for="TimerUrl">Timer (Orcha control link)</label>
-              <input type="url" id="TimerUrl" placeholder="Control link from Orcha /timer/setup">
+              <label for="TimerPc">Break timer</label>
+              <select id="TimerPc">
+                <option value="">No timer</option>
+                <option>PC1</option><option>PC2</option><option>PC3</option><option>PC4</option>
+                <option>PC5</option><option>PC6</option><option>PC7</option><option>PC8</option>
+              </select>
 
               <label for="ChatUrl">Chat (Embed URL)</label>
               <input
@@ -136,6 +145,7 @@
               >Disconnected</span>
             </div>
             <div class="obs-scenes">
+              <select id="TournamentGame" class="obs-btn" aria-label="Tournament game" hidden></select>
               <button id="openTimer" class="obs-btn" type="button" aria-haspopup="dialog">Timer</button>
               <button id="openScenes" class="obs-btn" type="button" aria-haspopup="dialog">Scenes</button>
               <div class="stream-controls">
@@ -259,8 +269,24 @@
 
       <dialog id="timerModal" class="scene-modal" aria-labelledby="timerModalTitle">
         <header class="ai-modal-header"><h2 id="timerModalTitle">Break timer</h2><button id="closeTimer" type="button" aria-label="Close timer">×</button></header>
+        <form id="timerCodeForm" class="timer-row" hidden>
+          <label>Commentary code <input id="timerCode" autocomplete="off" spellcheck="false" maxlength="8" placeholder="8 characters"></label>
+          <button class="obs-btn" type="submit">Unlock timer</button>
+        </form>
+        <div id="timerTime" class="timer-time" role="timer" aria-live="off">--:--</div>
+        <form id="timerDuration" class="timer-row">
+          <label>Minutes <input id="timerMinutes" type="number" min="0" max="1440" step="1" value="30" required></label>
+          <label>Seconds <input id="timerSeconds" type="number" min="0" max="59" step="1" value="0" required></label>
+          <button id="timerStart" class="obs-btn" type="submit">Start</button>
+        </form>
+        <div class="timer-row" id="timerActions">
+          <button class="obs-btn" type="button" data-timer-action="pause">Pause</button>
+          <button class="obs-btn" type="button" data-timer-action="resume">Resume</button>
+          <button class="obs-btn" type="button" data-timer-action="reset">Reset</button>
+          <button class="obs-btn" type="button" data-timer-action="hide">Hide</button>
+          <button class="obs-btn" type="button" data-timer-action="show">Show</button>
+        </div>
         <p id="timerStatus" role="status"></p>
-        <iframe id="timerControls" title="Orcha timer controls" referrerpolicy="no-referrer" hidden></iframe>
       </dialog>
 
       <dialog id="sceneModal" class="scene-modal" aria-labelledby="sceneModalTitle">
@@ -270,8 +296,7 @@
         <details class="scene-settings"><summary>Preview settings</summary>
           <form id="sceneSettings">
             <label>Mini-PC ID <input id="sceneMiniPc" type="number" min="1" step="1" required value="3"></label>
-            <p>Use {pc} in each Tenjin path. Map each preview to its exact OBS scene name.</p>
-            <div id="sceneConfigRows"></div>
+            <p>Scenes and layouts come from BadukCast (Dashboard → OBS → Template). {pc} in page URLs is replaced with this mini-PC ID.</p>
             <button type="submit">Apply settings</button>
           </form>
         </details>

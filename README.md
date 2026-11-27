@@ -58,6 +58,7 @@ Scenes:
 * Added click-to-switch OBS scene selection
 * Added confirmed Live indicators and preview tooltips
 * Added Advanced Settings and shared URLs for Tenjin pages
+* Scene list and preview layouts now come from BadukCast's shared OBS scene template
 ```
 
 Clock, Dashboard/OBS, Video, OGS/Games, Frontend/AI recovery, and VDO URL fixes
@@ -68,16 +69,16 @@ feedback remain outstanding. Preview availability depends on the Tenjin pages.
 
 ### Scene regression check
 
-With this repository served locally (default test URL `http://127.0.0.1:8765/`):
+The test serves this repository itself:
 
 ```sh
-deno run -A tests/scene-picker.mjs
+deno run -A --no-lock tests/scene-picker.mjs
 ```
 
-Set `OVERLAY_TEST_URL` to use another local server. Set
-`PLAYWRIGHT_CHROMIUM_EXECUTABLE` if Chromium is installed outside Playwright's
-usual location. The test mocks external frames and the OBS relay and checks
-scene commands, confirmation, disconnect handling, and shared settings.
+Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` if Chromium is installed elsewhere. The
+test mocks BadukCast's scene template API, external frames, and the OBS relay,
+and checks template-driven cards, composite previews, scene commands,
+confirmation, disconnect handling, the default-scene fallback, and shared links.
 
 ## Features
 
@@ -143,12 +144,11 @@ scene commands, confirmation, disconnect handling, and shared settings.
 - **Connecting**: Yellow indicator during connection attempt
 
 ### Scene Management
-- **Scenes** opens a modal with Tenjin previews; selecting a configured preview requests its matching OBS scene.
-- **Preview settings** sets the mini-PC ID (default `3`), Tenjin URL/path, exact OBS scene name, and enabled state for each card. `{pc}` is replaced with the mini-PC ID.
-- OBS scene names default to `Main`, `Intro`, `Hosts`, and `Interview`. Custom saved names are preserved; names can be changed in Preview settings.
-- All four previews are enabled by default: `/stream-overlay/{pc}`, `/intro/{pc}`, `/hosts/{pc}`, and `/interview/{pc}`. Older placeholder settings are automatically enabled.
-- Configure Tenjin scenes under **Session Setup > Advanced**, then click **Apply settings** to update generated links. The same settings are available inside the Scenes modal.
-- Shared links include `miniPc` and `sceneMainUrl`, `sceneMainName`, `sceneMainEnabled` (also `Intro`, `Hosts`, and `Interview`). Enabled is `1` or `0`; URLs support `{pc}`. URL parameters override browser settings. Values are encoded automatically when generating links.
+- **Scenes** opens a modal with one preview per scene in BadukCast's shared OBS scene template (edited in BadukCast under **Dashboard → OBS → Template**), in template order. Clicking a preview requests the OBS scene with that name.
+- The template is loaded from `{aiOrigin}/broadcaster/api/template`, the BadukCast server this link belongs to. Each preview composes the scene on a scaled 1920×1080 canvas: browser sources as page previews, colour sources as boxes, hidden sources omitted.
+- `{pc}` in a browser source URL is replaced with the table's mini-PC ID (unless the source is marked the same on every PC). Previews only load `http(s)` pages and cannot be clicked into.
+- If the template cannot be loaded, the default scenes `Main` (`/stream-overlay/{pc}`), `Intro` (`/intro/{pc}`), `Hosts` (`/hosts/{pc}`), `Interview` (`/interview/{pc}`), `Break` (`/stream-break`), and `Goodbye` (`/stream-goodbye`, both the same on every PC) on `https://app.baduk.club` are shown with a short note. Opening the modal retries the template.
+- **Preview settings** (also under **Session Setup > Advanced**) sets the mini-PC ID (default `3`); click **Apply settings** to update generated links. Shared links include `miniPc`.
 - Scene switching is disabled while disconnected or waiting for confirmation. The active highlight reflects OBS-confirmed state.
 - Previews load only while the modal is open and come from Tenjin, not OBS captures.
 
@@ -169,36 +169,12 @@ scene commands, confirmation, disconnect handling, and shared settings.
 - `ai`: AI overlay context as `type/id`, e.g. `game/87480675`
 - `db`: Use local AI host (`http://localhost:8080`) instead of `https://stream-ai.baduk.club`
 
-### Tenjin Scene Parameters
+### Scene Parameters
 
-| Scene | Preview URL parameter | OBS scene name parameter | Enabled parameter |
-|---|---|---|---|
-| Main | `sceneMainUrl` | `sceneMainName` | `sceneMainEnabled` |
-| Intro | `sceneIntroUrl` | `sceneIntroName` | `sceneIntroEnabled` |
-| Hosts | `sceneHostsUrl` | `sceneHostsName` | `sceneHostsEnabled` |
-| Interview | `sceneInterviewUrl` | `sceneInterviewName` | `sceneInterviewEnabled` |
+- `miniPc` sets the positive numeric mini-PC ID (default `3`) that replaces `{pc}` in scene previews. It overrides the value saved in this browser.
+- `aiOrigin` is the BadukCast server whose scene template is shown. Scene names and layouts are not URL parameters; change them in BadukCast under **Dashboard → OBS → Template**.
 
-- `miniPc` sets the positive numeric mini-PC ID (default `3`).
-- Preview values accept a path such as `/intro/{pc}` or a full HTTPS URL on `app.baduk.club`. `{pc}` is replaced with the mini-PC ID.
-- OBS scene names must match exactly. Defaults are `Main`, `Intro`, `Hosts`, and `Interview`.
-- Enabled values are `1` (on) and `0` (off). All four scenes are enabled by default.
-- URL parameters override saved browser settings. Omitted parameters use saved settings or defaults.
-
-To configure and share:
-
-1. Open **Session Setup → Advanced → Tenjin scenes**.
-2. Enter the mini-PC ID, preview URLs, matching OBS scene names, and enabled states. Enter normal, unencoded values in these fields.
-3. Click **Apply settings**, then copy a generated host link. All scene settings are included and URL-encoded automatically.
-
-For manual editing, append this example to an existing commentator URL that already has a query string:
-
-```text
-&miniPc=3&sceneIntroUrl=%2Fintro%2F%7Bpc%7D&sceneIntroName=Intro&sceneIntroEnabled=1
-```
-
-This loads `/intro/3` and maps it to the OBS scene `Intro`. Use `?` instead of the first `&` when starting a new query string. Encode each parameter value once.
-
-Clicking a preview requests its mapped scene when OBS is connected. The Live indicator changes after OBS confirms the switch.
+Clicking a preview requests its scene when OBS is connected. The Live indicator changes after OBS confirms the switch.
 
 ### AI Overlay
 Commentators can enter an AI context in setup, or pass it in the URL:
@@ -225,7 +201,7 @@ Open **AI** in the top bar to configure a game/review and select analysis views.
 
 ### OBS Remote Control (via VDO Ninja)
 - **How it works**: The OBS control panel is an embedded VDO Ninja iframe that relays OBS WebSocket controls through VDO Ninja. No direct browser-to-OBS WebSocket connection is required.
-- **Scenes**: Open the Tenjin preview modal and click a preview to request its mapped OBS scene through VDO Ninja.
+- **Scenes**: Open the scene preview modal and click a preview to request that OBS scene through VDO Ninja.
 
 ### Grid Parameters
 - `grid`: Grid corner coordinates (semicolon-separated)
@@ -255,7 +231,6 @@ https://yoursite.com/?OTB=your-video-url&Chat=your-chat-url&obs=your-vdo-ninja-o
 ### Security Considerations
 - OBS WebSocket passwords are not included in shareable URLs
 - Passwords must be entered manually for security
-- Scene lists are included in URLs for convenience
 
 ## Link
 [Board-Overlay Tool](https://weiqipro.github.io/Board-Overlay/)
@@ -274,18 +249,18 @@ AI views use BadukCast element parameters: board (`board`), winrate (`e=b,w,bar`
 
 Hover or focus a tool to see its name and shortcut. Use 1/2/3 for black/white/alternating stones, 4 for drawing, 5/6/7/8 for triangle/circle/square/letter marks, S for grid, C for coordinates, and K for the color picker. Q switches the alternating stone color. The color picker affects new drawings, marks, triangle stone markers, and shared cursors; existing annotations keep their original colors. Toolbar icons are inline SVGs and do not require an external icon font.
 
-### Load a tournament with a commentary code
+### Join with a commentary code
 
-In Session Setup, enter your eight-character commentary code and click
-**Load tournament**. OverlayTool fetches the tournament from BadukCast and
-fills its network room, OBS controller and chat links. Select the game to fill
-its camera feed and AI context; a single game is selected automatically.
-Then generate host links as usual. The commentary code is never included in
-shared links or stored in the browser.
+On the start page, enter your eight-character commentary code and your name,
+then click **Join**. OverlayTool loads the tournament from BadukCast and opens
+the commentator view straight away: network room, OBS controller, chat, the
+camera feed and AI analysis for the game being played now. If the tournament
+has several games, a game switcher appears in the top bar; it also follows the
+next active game between rounds unless you picked one yourself.
 
-Under **Server settings**, change the BadukCast server for a local or alternate
-Orcha instance (for example `http://localhost:8080`). That server needs the
-`/api/v1/bootstrap` endpoint. It is also used for generated AI panel links.
-Tenjin supplies controller/chat links through tournament `overlaySettings`;
-missing links can be entered manually. Loading a code does not start a stream
-or activate a game.
+The code is kept only in memory (for the timer and AI panels). It is never put
+in links or saved in the browser. Under **Server settings**, change the
+BadukCast server for a local or alternate Orcha (for example
+`http://localhost:8080`). Session Setup below the join box is for organisers
+who build links by hand.
+

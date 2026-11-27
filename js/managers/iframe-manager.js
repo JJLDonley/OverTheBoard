@@ -188,6 +188,11 @@ export class IframeManager {
             urlObj.searchParams.set('noaudio', '');
             // Also add mute parameter for extra safety
             urlObj.searchParams.set('mute', '1');
+            // room+view without scene/solo makes VDO.Ninja show its join menu.
+            const p = urlObj.searchParams;
+            if (/(^|\.)vdo\.ninja$/i.test(urlObj.hostname) && p.has('view') && p.has('room') && !p.has('scene') && !p.has('solo')) {
+                p.set('solo', '');
+            }
             debug.log('🔇 Feed URL ensuring muted:', urlObj.toString());
             
             return urlObj.toString();

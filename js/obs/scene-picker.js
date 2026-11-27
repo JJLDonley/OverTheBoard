@@ -1,9 +1,18 @@
-const SCENE_KEYS = ['Main', 'Intro', 'Hosts', 'Interview'];
-const DEFAULTS = [
-    { label: 'Main', path: '/stream-overlay/{pc}', scene: 'Main', enabled: true },
-    { label: 'Intro', path: '/intro/{pc}', scene: 'Intro', enabled: true },
-    { label: 'Hosts', path: '/hosts/{pc}', scene: 'Hosts', enabled: true },
-    { label: 'Interview', path: '/interview/{pc}', scene: 'Interview', enabled: true },
+// Scenes window. The scene list and layout come from BadukCast's shared OBS
+// scene template (Dashboard → OBS → Template); this file only previews it and
+// asks OBS (through the VDO relay) to switch to the chosen scene by name.
+const CANVAS = { width: 1920, height: 1080 };
+const COLOR = /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i;
+const PC_KEY = 'overlaySceneMiniPc';
+const FALLBACK_NOTE = 'Using default scenes; could not load the scene template.';
+// Shared pages are identical on every PC and carry no {pc}.
+const page = (name, path, shared = false) => ({
+    name,
+    sources: [{ name: `${name} page`, kind: 'browser', url: `https://app.baduk.club/${path}${shared ? '' : '/{pc}'}`, ...(shared ? { sameOnEveryPc: true } : {}), ...CANVAS, x: 0, y: 0, visible: true }],
+});
+const DEFAULT_SCENES = [
+    page('Main', 'stream-overlay'), page('Intro', 'intro'), page('Hosts', 'hosts'), page('Interview', 'interview'),
+    page('Break', 'stream-break', true), page('Goodbye', 'stream-goodbye', true),
 ];
 
 export class ScenePicker {
@@ -13,32 +22,15 @@ export class ScenePicker {
         this.grid = document.getElementById('scenePreviewGrid');
         this.status = document.getElementById('scenePickerStatus');
         this.pc = document.getElementById('sceneMiniPc');
-        this.rows = document.getElementById('sceneConfigRows');
         this.pending = null;
         this.observers = [];
-        let saved;
-        try { saved = JSON.parse(localStorage.getItem('overlayScenePreviews')); } catch { /* Use defaults. */ }
-        const params = new URLSearchParams(location.search);
-        this.config = DEFAULTS.map((entry, index) => {
-            const previous = saved?.scenes?.[index] || {};
-            const config = {
-                ...entry, ...previous,
-                scene: previous.scene?.trim() || entry.scene,
-                // Older settings disabled unfinished pages automatically.
-                enabled: saved?.version === 2 ? previous.enabled ?? true : true,
-            };
-            const prefix = `scene${SCENE_KEYS[index]}`;
-            if (params.has(`${prefix}Url`)) {
-                const path = params.get(`${prefix}Url`);
-                try { this.previewUrl(path, '3'); config.path = path; } catch { config.path = entry.path; }
-            }
-            if (params.has(`${prefix}Name`)) config.scene = params.get(`${prefix}Name`);
-            if (params.has(`${prefix}Enabled`)) config.enabled = params.get(`${prefix}Enabled`) !== '0';
-            // Validate saved paths as well as shared links before rendering frames.
-            try { this.previewUrl(config.path, '3'); } catch { config.path = entry.path; }
-            return config;
-        });
-        const pc = params.get('miniPc') || saved?.pc || '3';
+        this.cards = [];
+        this.scenes = DEFAULT_SCENES;
+        this.note = '';
+        this.loaded = false;
+        let saved = '';
+        try { saved = localStorage.getItem(PC_KEY) || ''; } catch { /* Use the default PC. */ }
+        const pc = new URLSearchParams(location.search).get('miniPc') || saved || '3';
         this.appliedPc = /^[1-9]\d*$/.test(pc) ? String(pc) : '3';
         this.pc.value = this.appliedPc;
         const form = document.getElementById('sceneSettings');
@@ -46,95 +38,152 @@ export class ScenePicker {
             document.getElementById('advancedSceneSettings').append(form);
             form.append(this.status);
         }
-        this.config.forEach((entry, index) => {
-            const row = document.createElement('div');
-            row.className = 'scene-config-row';
-            const label = document.createElement('label');
-            const enabled = document.createElement('input');
-            enabled.type = 'checkbox'; enabled.checked = entry.enabled;
-            label.append(enabled, entry.label);
-            const path = document.createElement('input');
-            path.value = entry.path; path.setAttribute('aria-label', `${entry.label} preview URL`);
-            const scene = document.createElement('input');
-            scene.value = entry.scene; scene.placeholder = 'Exact OBS scene name';
-            scene.setAttribute('aria-label', `${entry.label} OBS scene name`);
-            row.append(label, path, scene); this.rows.append(row);
-            entry.fields = { enabled, path, scene };
-        });
         document.getElementById('openScenes').addEventListener('click', () => {
             if (window.appMode !== 'commentator') return;
             this.dialog.showModal(); this.render();
+            this.load(); // Pick up template edits made since the page opened.
         });
         document.getElementById('closeScenes').addEventListener('click', () => this.dialog.close());
         this.dialog.addEventListener('close', () => {
-            this.observers.forEach(observer => observer.disconnect());
-            this.observers = [];
-            this.grid.replaceChildren();
+            this.clear();
             document.getElementById('openScenes').focus();
         });
         this.dialog.addEventListener('keydown', event => event.stopPropagation());
-        document.getElementById('sceneSettings').addEventListener('submit', event => {
+        form.addEventListener('submit', event => {
             event.preventDefault();
             const pc = this.pc.value.trim();
             if (!/^[1-9]\d*$/.test(pc)) { this.status.textContent = 'Enter a numeric mini-PC ID.'; return; }
-            const next = this.config.map(entry => ({ label: entry.label, path: entry.fields.path.value.trim(), scene: entry.fields.scene.value.trim(), enabled: entry.fields.enabled.checked }));
-            try { next.forEach(entry => this.previewUrl(entry.path, pc)); }
-            catch { this.status.textContent = 'Use an HTTPS Tenjin URL or a path such as /intro/{pc}.'; return; }
-            this.config.forEach((entry, i) => Object.assign(entry, next[i]));
             this.pc.value = pc;
             this.appliedPc = pc;
-            try { localStorage.setItem('overlayScenePreviews', JSON.stringify({ version: 2, pc, scenes: next })); }
+            try { localStorage.setItem(PC_KEY, pc); }
             catch { this.status.textContent = 'Settings apply for this session; browser storage is unavailable.'; }
             window.updateShareableUrl?.();
             if (this.dialog.open) this.render();
-            else this.status.textContent = 'Scene settings applied to generated links.';
+            else this.status.textContent = 'Mini-PC ID applied to generated links.';
         });
         window.addEventListener('obs-status-changed', () => this.updateState());
+        this.load();
+    }
+
+    /** BadukCast server that serves the scene template, or '' when unknown. */
+    get origin() {
+        try {
+            const url = new URL(window.tournamentAiOrigin || new URLSearchParams(location.search).get('aiOrigin') || '');
+            return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.origin : '';
+        } catch { return ''; }
+    }
+
+    /** Fetches the shared template; falls back to the default scenes and never throws. */
+    async load() {
+        if (this.loading) return this.loading;
+        this.loading = (async () => {
+            let scenes = null;
+            const origin = this.origin;
+            if (origin) {
+                try {
+                    const response = await fetch(`${origin}/broadcaster/api/template`, { signal: AbortSignal.timeout(8000) });
+                    if (response.ok) scenes = ScenePicker.parse(await response.json());
+                } catch { /* Fall back to defaults below. */ }
+            }
+            // A failed refresh keeps the last template that did load.
+            if (!scenes && this.loaded) return;
+            const changed = JSON.stringify(scenes || DEFAULT_SCENES) !== JSON.stringify(this.scenes);
+            this.loaded = !!scenes;
+            this.scenes = scenes || DEFAULT_SCENES;
+            this.note = scenes ? '' : FALLBACK_NOTE;
+            if (this.dialog.open && changed) this.render(); else this.updateState();
+        })();
+        try { await this.loading; } finally { this.loading = null; }
+    }
+
+    /** Keeps only well-formed scenes and sources; returns null when nothing usable remains. */
+    static parse(body) {
+        const number = value => Number.isFinite(value) ? value : 0;
+        const scenes = (Array.isArray(body?.template?.scenes) ? body.template.scenes : [])
+            .filter(scene => typeof scene?.name === 'string' && scene.name.trim())
+            .map(scene => ({
+                name: scene.name,
+                sources: (Array.isArray(scene.sources) ? scene.sources : [])
+                    .filter(source => source && source.visible !== false
+                        && ((source.kind === 'browser' && typeof source.url === 'string')
+                            || (source.kind === 'color' && COLOR.test(source.color || ''))))
+                    .map(source => ({ ...source, x: number(source.x), y: number(source.y), width: number(source.width), height: number(source.height) })),
+            }));
+        return scenes.length ? scenes : null;
     }
 
     appendParams(params) {
         params.set('miniPc', this.appliedPc);
-        this.config.forEach((entry, index) => {
-            const prefix = `scene${SCENE_KEYS[index]}`;
-            params.set(`${prefix}Url`, entry.path);
-            params.set(`${prefix}Name`, entry.scene);
-            params.set(`${prefix}Enabled`, entry.enabled ? '1' : '0');
-        });
     }
 
-    previewUrl(path, pc = this.appliedPc) {
-        const url = new URL(path.replaceAll('{pc}', encodeURIComponent(pc)), 'https://app.baduk.club');
-        if (url.protocol !== 'https:' || url.origin !== 'https://app.baduk.club') throw Error('Invalid preview URL');
+    /** Only plain http(s) preview pages; {pc} is the mini-PC ID unless the source is shared by all PCs. */
+    previewUrl(source, pc = this.appliedPc) {
+        const raw = source.sameOnEveryPc ? source.url : source.url.replaceAll('{pc}', encodeURIComponent(pc));
+        const url = new URL(raw);
+        if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw Error('Invalid preview URL');
         return url.href;
     }
 
-    render() {
+    clear() {
         this.observers.forEach(observer => observer.disconnect());
         this.observers = [];
+        this.cards = [];
         this.grid.replaceChildren();
-        this.config.forEach(entry => {
+    }
+
+    /** One scaled 1920×1080 composition; frames get their src only once the card scrolls into view. */
+    preview(scene) {
+        const preview = document.createElement('div'); preview.className = 'scene-preview-image';
+        const canvas = document.createElement('div'); canvas.className = 'scene-preview-canvas';
+        const frames = [];
+        for (const source of scene.sources) {
+            let layer;
+            if (source.kind === 'color') {
+                layer = document.createElement('div');
+                layer.style.background = source.color;
+            } else {
+                let src;
+                try { src = this.previewUrl(source); } catch { continue; }
+                layer = document.createElement('iframe');
+                layer.title = `${scene.name}: ${source.name || 'browser source'} preview`;
+                layer.tabIndex = -1;
+                layer.setAttribute('aria-hidden', 'true');
+                layer.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+                layer.referrerPolicy = 'no-referrer';
+                layer.dataset.src = src;
+                frames.push(layer);
+            }
+            layer.className = 'scene-preview-layer';
+            Object.assign(layer.style, { left: `${source.x}px`, top: `${source.y}px`, width: `${source.width}px`, height: `${source.height}px` });
+            canvas.append(layer);
+        }
+        preview.append(canvas);
+        const resize = new ResizeObserver(() => { canvas.style.transform = `scale(${preview.clientWidth / CANVAS.width})`; });
+        resize.observe(preview);
+        const visible = new IntersectionObserver(entries => {
+            if (!entries.some(entry => entry.isIntersecting)) return;
+            frames.forEach(frame => { frame.src = frame.dataset.src; });
+            visible.disconnect();
+        }, { root: this.dialog });
+        visible.observe(preview);
+        this.observers.push(resize, visible);
+        return preview;
+    }
+
+    render() {
+        this.clear();
+        this.cards = this.scenes.map(scene => {
             const card = document.createElement('button'); card.type = 'button';
             card.className = 'scene-preview-card';
             card.title = 'Click preview to switch OBS scene';
-            card.setAttribute('aria-label', `Switch OBS scene to ${entry.scene || entry.label}`);
-            const preview = document.createElement('div'); preview.className = 'scene-preview-image';
-            if (entry.enabled) {
-                const frame = document.createElement('iframe');
-                frame.title = `${entry.label} preview`; frame.tabIndex = -1;
-                frame.setAttribute('aria-hidden', 'true'); frame.src = this.previewUrl(entry.path);
-                preview.append(frame);
-                const observer = new ResizeObserver(() => { frame.style.transform = `scale(${preview.clientWidth / 1920})`; });
-                observer.observe(preview);
-                this.observers.push(observer);
-            } else preview.textContent = 'Coming soon';
-            const name = document.createElement('strong'); name.textContent = entry.label;
+            card.setAttribute('aria-label', `Switch OBS scene to ${scene.name}`);
+            const name = document.createElement('strong'); name.textContent = scene.name;
             const state = document.createElement('span'); state.className = 'scene-card-state';
-            card.append(preview, name, state); this.grid.append(card);
-            entry.card = card; entry.state = state;
+            card.append(this.preview(scene), name, state); this.grid.append(card);
             card.addEventListener('click', () => {
-                if (!entry.enabled || !entry.scene || this.pending || !this.controller.isConnected) return;
-                if (!this.controller.switchToScene(entry.scene)) return;
-                this.pending = entry.scene;
+                if (this.pending || !this.controller.isConnected) return;
+                if (!this.controller.switchToScene(scene.name)) return;
+                this.pending = scene.name;
                 clearTimeout(this.timer);
                 this.timer = setTimeout(() => {
                     this.pending = null; this.updateState();
@@ -142,6 +191,7 @@ export class ScenePicker {
                 }, 8000);
                 this.updateState();
             });
+            return { scene: scene.name, card, state };
         });
         this.updateState();
     }
@@ -150,14 +200,14 @@ export class ScenePicker {
         if (this.pending && (this.controller.currentScene === this.pending || !this.controller.isConnected)) {
             clearTimeout(this.timer); this.pending = null;
         }
-        this.status.textContent = !this.controller.isConnected ? 'Connect OBS to switch scenes. Previews remain available.' : this.pending ? 'Waiting for OBS…' : 'Select a preview to switch the OBS scene.';
-        this.config.forEach(entry => {
-            if (!entry.card) return;
-            const active = this.controller.isConnected && !!entry.scene && this.controller.currentScene === entry.scene;
-            entry.card.disabled = !entry.enabled || !entry.scene || !this.controller.isConnected || !!this.pending;
-            entry.card.classList.toggle('active', active);
-            entry.card.setAttribute('aria-pressed', String(active));
-            entry.state.textContent = !entry.enabled ? 'Not configured yet' : !entry.scene ? 'Set OBS scene name in settings' : active ? 'Live' : this.pending === entry.scene ? 'Switching…' : entry.scene;
+        const message = !this.controller.isConnected ? 'Connect OBS to switch scenes. Previews remain available.' : this.pending ? 'Waiting for OBS…' : 'Select a preview to switch the OBS scene.';
+        this.status.textContent = [this.note, message].filter(Boolean).join(' ');
+        this.cards.forEach(({ scene, card, state }) => {
+            const active = this.controller.isConnected && this.controller.currentScene === scene;
+            card.disabled = !this.controller.isConnected || !!this.pending;
+            card.classList.toggle('active', active);
+            card.setAttribute('aria-pressed', String(active));
+            state.textContent = active ? 'Live' : this.pending === scene ? 'Switching…' : scene;
         });
     }
 }
