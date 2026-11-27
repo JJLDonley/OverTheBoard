@@ -116,6 +116,16 @@ export class ScenePicker {
         params.set('miniPc', this.appliedPc);
     }
 
+    /** Sets the mini-PC ID from a join link or the loaded tournament. */
+    setPc(pc) {
+        pc = String(pc);
+        if (!/^[1-9]\d*$/.test(pc) || pc === this.appliedPc) return;
+        this.pc.value = pc;
+        this.appliedPc = pc;
+        try { localStorage.setItem(PC_KEY, pc); } catch { /* Applies for this session. */ }
+        if (this.dialog.open) this.render();
+    }
+
     /** Only plain http(s) preview pages; {pc} is the mini-PC ID unless the source is shared by all PCs. */
     previewUrl(source, pc = this.appliedPc) {
         const raw = source.sameOnEveryPc ? source.url : source.url.replaceAll('{pc}', encodeURIComponent(pc));

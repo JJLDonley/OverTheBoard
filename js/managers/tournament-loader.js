@@ -1,6 +1,9 @@
 // Commentary-code join: one code loads the whole tournament and boots the
 // commentator view in place. The code is sent only in request headers and is
-// kept in memory for timer/AI requests; it is never saved or put in links.
+// kept in memory for timer/AI requests; it is never saved or put in generated links. An organiser's join link
+// (?key=…&name=…) is read once and the key removed from the address bar.
+import { KEY_HELP, normalizeAccessKey } from '../utils/access-key.js';
+
 const FOLLOW_MS = 30000;
 const ERRORS = {
     401: 'That code is invalid, expired, or revoked.',
@@ -32,6 +35,36 @@ export class TournamentLoader {
             event.preventDefault();
             this.join();
         });
+        this.readJoinLink();
+    }
+
+    /**
+     * Organiser's join link: `?key=XXXXXXXX&name=Devin` (optionally `&server=`
+     * and `&pc=`). The key is removed from the address bar before anything else
+     * happens and never appears in generated links. Every other setting is then
+     * loaded from Badukcast, so the link cannot go stale.
+     */
+    readJoinLink() {
+        const url = new URL(location.href);
+        const link = url.searchParams;
+        if (!link.has('key')) return;
+        const key = normalizeAccessKey(link.get('key')) || (link.get('key') || '').trim();
+        const name = (link.get('name') || '').trim();
+        const server = (link.get('server') || '').trim();
+        const pc = (link.get('pc') || '').trim();
+        for (const param of ['key', 'name', 'server', 'pc']) link.delete(param);
+        history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+        if (!key || (window.appMode && window.appMode !== 'landing')) return;
+        this.code.value = key;
+        if (name) this.name.value = name.slice(0, 40);
+        if (server) this.server.value = server;
+        if (/^[1-9]\d*$/.test(pc)) window.scenePicker?.setPc(pc);
+        if (this.name.value.trim()) {
+            this.join();
+        } else {
+            this.status.textContent = 'Enter your name, then press Join.';
+            this.name.focus();
+        }
     }
 
     async fetchBootstrap(origin, key) {
@@ -60,8 +93,8 @@ export class TournamentLoader {
             if (server.origin === location.origin) {
                 throw Error(`${server.origin} is this OverlayTool page, not the Badukcast server. Under Server settings, enter the Badukcast (Orcha) address${['localhost', '127.0.0.1'].includes(location.hostname) ? `, e.g. http://${location.hostname}:8080` : ''}.`);
             }
-            const key = this.code.value.trim().toUpperCase();
-            if (!/^[A-Z2-9]{8}$/.test(key)) throw Error('Enter your eight-character commentary code.');
+            const key = normalizeAccessKey(this.code.value);
+            if (!key) throw Error(KEY_HELP);
             const data = await this.fetchBootstrap(server.origin, key);
             this.code.value = '';
             window.tournamentAccessKey = key;
@@ -73,6 +106,10 @@ export class TournamentLoader {
             this.fill('NetworkRoom', settings.networkRoom || `badukcast-${data.tournament.id}`);
             this.fill('ObsVdoUrl', settings.obsVdoUrl || '');
             this.fill('ChatUrl', settings.chatUrl || '');
+            // Badukcast names a PC's network room OverlayTool{pc}; the scene
+            // previews and generated links must use that same PC.
+            const roomPc = /^OverlayTool([1-9]\d*)$/i.exec(settings.networkRoom || '')?.[1];
+            if (roomPc) window.scenePicker?.setPc(roomPc);
             this.renderGames();
             const game = this.currentGame();
             this.fillGame(game);

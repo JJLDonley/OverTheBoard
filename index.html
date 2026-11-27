@@ -24,7 +24,7 @@
           <h2>Commentating? Join with your code</h2>
           <form id="tournamentCodeForm" class="landing-fields">
             <label for="CommentaryCode">Commentary code</label>
-            <input id="CommentaryCode" type="password" maxlength="32" autocomplete="off" placeholder="8-character code from the organiser">
+            <input id="CommentaryCode" type="password" maxlength="64" autocomplete="off" placeholder="Key from the organiser">
             <label for="CommentatorName">Your name</label>
             <input id="CommentatorName" maxlength="40" autocomplete="name" placeholder="Shown to other commentators">
             <button id="loadTournament" type="submit">Join</button>
@@ -270,7 +270,7 @@
       <dialog id="timerModal" class="scene-modal" aria-labelledby="timerModalTitle">
         <header class="ai-modal-header"><h2 id="timerModalTitle">Break timer</h2><button id="closeTimer" type="button" aria-label="Close timer">×</button></header>
         <form id="timerCodeForm" class="timer-row" hidden>
-          <label>Commentary code <input id="timerCode" autocomplete="off" spellcheck="false" maxlength="8" placeholder="8 characters"></label>
+          <label>Commentary code <input id="timerCode" autocomplete="off" spellcheck="false" maxlength="64" placeholder="Key from the organiser"></label>
           <button class="obs-btn" type="submit">Unlock timer</button>
         </form>
         <div id="timerTime" class="timer-time" role="timer" aria-live="off">--:--</div>

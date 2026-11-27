@@ -28,6 +28,7 @@ try {
   const base = `http://127.0.0.1:${server.addr.port}/`;
   let status = 200;
   let requests = 0;
+  let networkRoom = "san-diego-room";
   const games = [
     { id: "one", name: "Board 1", blackPlayer: "Alice", whitePlayer: "Bob", roundNumber: 1, boardNumber: 1, status: "finished", vdoUrl: "https://vdo.ninja/?view=one", analysisContext: { type: "game", id: "1111" } },
     { id: "two", name: "Board 2", blackPlayer: "Cara", whitePlayer: "Dan", roundNumber: 2, boardNumber: 1, status: "active", vdoUrl: "https://vdo.ninja/?view=two", analysisContext: { type: "game", id: "2222" } },
@@ -40,14 +41,16 @@ try {
       if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
       if (url.pathname === "/api/v1/bootstrap") {
         requests++;
-        check(request.headers()["x-badukcast-key"] === "ABCDEFGH", "normalized key sent in header");
-        check(!url.href.includes("ABCDEFGH"), "key excluded from request URL");
+        // Badukcast ignores letter case; the key is sent as typed, in a header only.
+        const sent = (request.headers()["x-badukcast-key"] || "").toUpperCase();
+        check(["ABCDEFGH", "STATEGOOPEN2026"].includes(sent), `key sent in header: ${sent}`);
+        check(!/abcdefgh|stategoopen2026/i.test(url.href), "key excluded from request URL");
         return route.fulfill({
           status, headers: cors, contentType: "application/json",
           body: JSON.stringify({
             tournament: { id: "san-diego", name: "San Diego" },
             games,
-            overlaySettings: { networkRoom: "san-diego-room", obsVdoUrl: "https://vdo.ninja/?room=control", chatUrl: "https://example.com/chat" },
+            overlaySettings: { networkRoom, obsVdoUrl: "https://vdo.ninja/?room=control", chatUrl: "https://example.com/chat" },
           }),
         });
       }
@@ -69,9 +72,11 @@ try {
   };
 
   // Errors keep the commentator on the landing page.
-  await join("short");
-  check(requests === 0, "short code rejected before any request");
-  check((await page.locator("#tournamentLoadStatus").textContent()).includes("eight-character"), "short code guidance");
+  await join("ab");
+  check(requests === 0, "too-short key rejected before any request");
+  await join("has spaces");
+  check(requests === 0, "key with spaces rejected before any request");
+  check((await page.locator("#tournamentLoadStatus").textContent()).includes("without spaces"), "key guidance");
   status = 401;
   await join("abcdefgh");
   check((await page.locator("#tournamentLoadStatus").textContent()).includes("invalid"), "401 message");
@@ -101,13 +106,13 @@ try {
   check(url.searchParams.get("Network") === "san-diego-room", "network room from tournament");
   check(url.searchParams.get("aiOrigin") === ORCHA, "AI served by the tournament server");
   check(url.searchParams.get("ai") === "game/2222", "AI analysis for the active game");
-  check(!page.url().includes("ABCDEFGH"), "code not in URL");
+  check(!/abcdefgh/i.test(page.url()), "code not in URL");
   check((await page.locator("#feed").getAttribute("src") || "").includes("view=two"), "camera feed for the active game");
   check((await page.locator("#chat").getAttribute("src") || "").startsWith("https://example.com/chat"), "chat loaded");
   check(await page.locator("#AiOverlayHeader").inputValue() === "game/2222", "AI panel context set");
-  check(await page.evaluate(() => window.tournamentAccessKey) === "ABCDEFGH", "code kept in memory for timer/AI");
+  check((await page.evaluate(() => window.tournamentAccessKey)).toUpperCase() === "ABCDEFGH", "code kept in memory for timer/AI");
   const stored = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
-  check(!stored.includes("ABCDEFGH"), "code not saved in browser storage");
+  check(!/abcdefgh/i.test(stored), "code not saved in browser storage");
 
   // Game switcher in the commentator header.
   check(await page.locator("#TournamentGame").isVisible(), "game switcher shown for multi-game tournaments");
@@ -119,6 +124,39 @@ try {
 
   // Name prompt is skipped because the name was given on the join form.
   check(!(await page.locator("dialog[open]").count()), "no extra dialogs after joining");
+
+  // Organiser's join link: ?key=…&name=… The key is stripped from the address
+  // bar at once and everything else is loaded from Badukcast.
+  networkRoom = "OverlayTool7";
+  const joinLink = (name) => `${base}?key=StateGoOpen2026&name=${encodeURIComponent(name)}&server=${encodeURIComponent(ORCHA)}`;
+  const beforeLink = requests;
+  await page.goto(joinLink("Devin"));
+  await page.waitForFunction(() => window.appMode === "commentator");
+  check(requests === beforeLink + 1, "join link loads the tournament without typing the code");
+  const linked = new URL(page.url());
+  check(!linked.searchParams.has("key") && !/stategoopen2026/i.test(page.url()), `key removed from the address bar: ${page.url()}`);
+  check(linked.searchParams.get("Network") === "OverlayTool7", "network room from Badukcast, not from the link");
+  check(linked.searchParams.get("miniPc") === "7", "mini-PC follows the OverlayTool{pc} network room");
+  check(linked.searchParams.get("label") === "Devin", "name from the link");
+  check((await page.locator("#obs").getAttribute("src") || "").startsWith("https://vdo.ninja/?room=control"), "OBS control link loaded");
+  check(await page.evaluate(() => window.tournamentAccessKey) === "StateGoOpen2026", "tournament-name key kept in memory after link join");
+  check(!/stategoopen2026/i.test(await page.evaluate(() => window.currentViewerUrl || "")), "key not in the viewer link");
+
+  // `name=` left empty (and none remembered): the link only prefills.
+  await page.evaluate(() => localStorage.clear());
+  const beforeNameless = requests;
+  await page.goto("about:blank");
+  await page.goto(joinLink(""));
+  await page.waitForFunction(() => document.getElementById("tournamentLoadStatus")?.textContent.includes("Enter your name"));
+  check(requests === beforeNameless, "no request until the commentator gives a name");
+  check(!new URL(page.url()).searchParams.has("key"), "key removed from the address bar while waiting");
+  check(await page.locator("#CommentaryCode").inputValue() === "StateGoOpen2026", "key prefilled");
+  check(await page.locator("#BadukCastServer").inputValue() === ORCHA, "server prefilled");
+  await page.locator("#CommentatorName").fill("Commentator Two");
+  await page.locator("#loadTournament").click();
+  await page.waitForFunction(() => window.appMode === "commentator");
+  check(new URL(page.url()).searchParams.get("label") === "Commentator Two", "joined after naming");
+
   check(errors.length === 0, `page errors: ${errors.join("; ")}`);
   console.log("Commentary-code join checks passed: errors stay on landing, one code boots the commentator view with room, OBS, chat, feed and AI for the active game, game switching, and code privacy.");
 } finally {

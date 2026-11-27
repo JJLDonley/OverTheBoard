@@ -1,5 +1,6 @@
 // Native break-timer controls. Commands go straight to Orcha's Timer API using
 // the commentary code loaded in this tab (memory only), never through VDO/OBS.
+import { KEY_HELP, normalizeAccessKey } from '../utils/access-key.js';
 const PCS = /^PC[1-8]$/;
 const POLL_MS = 1000;
 
@@ -72,8 +73,8 @@ export class TimerControls {
 
     /** Commentator links open a fresh page, so the code can be entered here (memory only). */
     async unlock() {
-        const key = this.code.value.trim().toUpperCase();
-        if (!/^[A-Z2-9]{8}$/.test(key)) { this.status.textContent = 'Enter your eight-character commentary code.'; return; }
+        const key = normalizeAccessKey(this.code.value);
+        if (!key) { this.status.textContent = KEY_HELP; return; }
         if (!this.origin) { this.status.textContent = 'This link has no BadukCast server. Generate it again from Session Setup.'; return; }
         this.status.textContent = 'Checking code\u2026';
         try {
